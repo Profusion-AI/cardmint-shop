@@ -6,12 +6,31 @@ import { toast } from "sonner";
 
 export const EmailCapture = () => {
   const [email, setEmail] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email) {
-      toast.success("Welcome! Check your email for your 10% code.");
-      setEmail("");
+    if (!email || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch("/api/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, source: "vault_landing" }),
+      });
+
+      if (response.ok) {
+        toast.success("Welcome! Check your email for your 10% code.");
+        setEmail("");
+      } else {
+        const data = await response.json().catch(() => ({}));
+        toast.error(data.error || "Something went wrong. Please try again.");
+      }
+    } catch {
+      toast.error("Network error. Please check your connection.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -38,8 +57,8 @@ export const EmailCapture = () => {
               required
               className="flex-1 h-12 bg-oxford-blue border-mint-spark/30 focus:border-mint-spark text-foreground placeholder:text-muted-foreground"
             />
-            <Button type="submit" variant="hero" size="lg" className="sm:w-auto w-full">
-              Get Code
+            <Button type="submit" variant="hero" size="lg" className="sm:w-auto w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Sending..." : "Get Code"}
             </Button>
           </form>
 
