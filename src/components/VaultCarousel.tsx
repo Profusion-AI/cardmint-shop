@@ -46,7 +46,7 @@ export const VaultCarousel = () => {
                   key={index} 
                   className="min-w-full px-4"
                 >
-                  <div className="bg-gradient-to-br from-graded-blush/20 to-collectors-pink/10 rounded-lg p-12 border border-border/30 text-center backdrop-blur-sm">
+                  <div className="cardmint-tile cardmint-tile--glass text-center p-12">
                     <h3 className="text-3xl font-bold mb-2 text-foreground">
                       {set.name}
                     </h3>

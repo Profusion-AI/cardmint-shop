@@ -55,11 +55,24 @@ export default {
         "indigo-ink": "hsl(var(--indigo-ink))",
         "cerulean-trust": "hsl(var(--cerulean-trust))",
         "mint-spark": "hsl(var(--mint-spark))",
+        // Hex-based utility tokens (drop-in from style brief)
+        midnight: "#0A203F",
+        nearblack: "#121212",
+        paper: "#FAF7F2",
+        sage: "#98B2A6",
+        mint: "#4ADC61",
+        aqua: "#96E3AF",
+        gold: "#D4AF37",
+      },
+      fontFamily: {
+        display: ["Fraunces", "serif"],
+        sans: ["Inter", "system-ui", "-apple-system", "sans-serif"],
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        "2xl": "1rem",
       },
       keyframes: {
         "accordion-down": {

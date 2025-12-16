@@ -1,8 +1,16 @@
+@font-face {
+  font-family: 'Pokemon Classic';
+  src: url('/fonts/PokemonClassic.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here.
 All colors MUST be HSL.
 */
 
@@ -15,22 +23,26 @@ All colors MUST be HSL.
     --oxford-blue: 219 63% 14%;         /* #0B143C - Authenticity Core */
     --indigo-ink: 206 43% 27%;          /* #264764 - Intellect & Craft */
     --cerulean-trust: 192 37% 40%;      /* #40798C - Transparency */
-    --mint-spark: 168 69% 53%;          /* #3AD5B9 - Fresh Perspective */
+    --mint-spark: 168 69% 53%;          /* #3AD5B9 - Fresh Perspective (Aquamarine) */
+    /* Brand tokens (hex → HSL) */
+    --mint-brand: 129 58% 68%;          /* #4ADC61 - CardMint Green (CTAs) */
+    --aqua-brand: 139 58% 74%;          /* #96E3AF - Aquamarine (hover/secondary) */
 
     /* Semantic Tokens - Light Mode */
     --background: var(--oxford-blue);
     --foreground: 0 0% 98%;
 
-    --card: var(--graded-blush);
-    --card-foreground: var(--oxford-blue);
+    --card: 37 33% 96%;  /* Paper #FAF7F2 - neutral tile background */
+    --card-foreground: 219 63% 14%;  /* oxford-blue text */
 
     --popover: var(--oxford-blue);
     --popover-foreground: 0 0% 98%;
 
-    --primary: var(--cardmint-red);
-    --primary-foreground: 0 0% 98%;
+    /* CTA color pivot: Mint primary, Aqua secondary */
+    --primary: var(--mint-brand);
+    --primary-foreground: var(--oxford-blue);
 
-    --secondary: var(--mint-spark);
+    --secondary: var(--aqua-brand);
     --secondary-foreground: var(--oxford-blue);
 
     --muted: var(--indigo-ink);
@@ -51,7 +63,7 @@ All colors MUST be HSL.
     /* CardMint Custom Tokens */
     --hero-gradient: linear-gradient(135deg, hsl(var(--oxford-blue)), hsl(var(--indigo-ink)));
     --card-glow: 0 8px 24px hsla(var(--mint-spark), 0.15);
-    --cta-glow: 0 4px 16px hsla(var(--cardmint-red), 0.4);
+    --cta-glow: 0 4px 16px hsla(var(--mint-brand), 0.4);
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
@@ -65,10 +77,11 @@ All colors MUST be HSL.
     --popover: var(--oxford-blue);
     --popover-foreground: 0 0% 98%;
 
-    --primary: var(--cardmint-red);
-    --primary-foreground: 0 0% 98%;
+    /* Match light: Mint primary on dark canvas */
+    --primary: var(--mint-brand);
+    --primary-foreground: var(--oxford-blue);
 
-    --secondary: var(--mint-spark);
+    --secondary: var(--aqua-brand);
     --secondary-foreground: var(--oxford-blue);
 
     --muted: var(--indigo-ink);
@@ -93,5 +106,113 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* CardMint component utilities */
+@layer components {
+  /* Base “trust panel” */
+  .cardmint-tile {
+    @apply rounded-2xl border shadow-lg p-6
+           bg-paper/90 border-sage/40 text-nearblack
+           transition-all duration-200 ease-out
+           hover:-translate-y-0.5 hover:shadow-xl;
+  }
+
+  /* Dark / glass-on-dark variant */
+  .cardmint-tile--glass {
+    @apply bg-white/5 border-white/10 text-white backdrop-blur-md;
+  }
+  .dark .cardmint-tile {
+    @apply bg-white/5 border-white/10 text-white backdrop-blur-md;
+  }
+
+  /* Clickable emphasis */
+  .cardmint-tile--action {
+    @apply cursor-pointer hover:-translate-y-1;
+  }
+
+  /* Compact spacing for dense grids */
+  .cardmint-tile--compact {
+    @apply p-4;
+  }
+
+  /* Flat (no lift) when you don’t want motion */
+  .cardmint-tile--flat {
+    @apply hover:translate-y-0 hover:shadow-lg;
+  }
+
+  /* Icon styling helper */
+  .cardmint-tile__icon {
+    @apply text-gold;
+  }
+
+  /* Accessible focus */
+  .cardmint-tile:focus-visible,
+  .cardmint-tile--action:focus-visible {
+    @apply outline-none ring-2 ring-mint ring-offset-2 ring-offset-midnight;
+  }
+
+  /* Hero Card Carousel - 3D Perspective Container */
+  .hero-carousel {
+    perspective: 1000px;
+    perspective-origin: center center;
+    position: relative;
+    height: 450px;
+  }
+
+  /* Hero Card Base - All cards share this */
+  .hero-carousel__card {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 280px;
+    height: 392px; /* 2.5:3.5 aspect ratio for cards */
+    transform-style: preserve-3d;
+    transition: transform 700ms cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 700ms cubic-bezier(0.4, 0, 0.2, 1),
+                filter 700ms cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform, opacity, filter;
+  }
+
+  /* Active/Front card state */
+  .hero-carousel__card--active {
+    z-index: 30;
+    opacity: 1;
+    transform: translate(-50%, -50%) translateZ(0) rotateY(0deg) scale(1);
+    filter: blur(0);
+  }
+
+  /* Left background card */
+  .hero-carousel__card--left {
+    z-index: 10;
+    opacity: 0.5;
+    transform: translate(-50%, -50%) translateX(-35%) translateZ(-100px) rotateY(15deg) scale(0.75);
+    filter: blur(4px);
+  }
+
+  /* Right background card */
+  .hero-carousel__card--right {
+    z-index: 10;
+    opacity: 0.5;
+    transform: translate(-50%, -50%) translateX(35%) translateZ(-100px) rotateY(-15deg) scale(0.75);
+    filter: blur(4px);
+  }
+
+  /* Mint glow effect for front card */
+  .hero-carousel__card--active::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 0.75rem;
+    box-shadow: 0 0 40px 10px hsla(var(--mint-spark), 0.2);
+    pointer-events: none;
+  }
+
+  /* Reduced motion: disable all transitions */
+  @media (prefers-reduced-motion: reduce) {
+    .hero-carousel__card {
+      transition: none;
+    }
   }
 }
