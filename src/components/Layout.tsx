@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { TopBanner } from "./TopBanner";
+import { useCookieConsent } from "@/hooks/useCookieConsent";
+import { loadKlaviyo, disableKlaviyo } from "@/lib/klaviyoLoader";
 
 /**
  * Layout - Wraps all pages with persistent navigation
@@ -21,16 +23,20 @@ export function Layout({ children }: LayoutProps) {
   // TODO: Get auth state from AuthContext when user accounts are implemented
   // const { isLoggedIn } = useAuth();
 
-  // Load Klaviyo tracking script
+  // Get cookie consent state for conditional Klaviyo loading
+  const { hasConsented, granularConsent } = useCookieConsent();
+
+  // Consent-aware Klaviyo loading: only load when marketing consent is granted
   useEffect(() => {
-    if (!document.getElementById('klaviyo-script')) {
-      const script = document.createElement('script');
-      script.id = 'klaviyo-script';
-      script.src = 'https://static.klaviyo.com/onsite/js/klaviyo.js?company_id=Utgrhu';
-      script.async = true;
-      document.head.appendChild(script);
+    if (granularConsent?.marketing) {
+      // User has granted marketing consent - load Klaviyo
+      loadKlaviyo();
+    } else if (hasConsented && !granularConsent?.marketing) {
+      // User has consented but declined marketing - ensure Klaviyo is disabled
+      disableKlaviyo();
     }
-  }, []);
+    // If !hasConsented, do nothing - wait for user to make a choice
+  }, [hasConsented, granularConsent?.marketing]);
 
   return (
     <div className="min-h-screen bg-oxford-blue">

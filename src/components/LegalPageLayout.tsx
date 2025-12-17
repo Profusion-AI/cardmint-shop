@@ -13,6 +13,7 @@ interface LegalPageLayoutProps {
   title: string;
   emoji: string;
   effectiveDate: string;
+  lastUpdated?: string;
   children: React.ReactNode;
   breadcrumbLabel: string;
 }
@@ -21,6 +22,7 @@ export function LegalPageLayout({
   title,
   emoji,
   effectiveDate,
+  lastUpdated,
   children,
   breadcrumbLabel,
 }: LegalPageLayoutProps) {
@@ -54,6 +56,12 @@ export function LegalPageLayout({
           </h1>
           <p className="text-paper/60 text-sm">
             <time dateTime={effectiveDate}>Effective: {effectiveDate}</time>
+            {lastUpdated && (
+              <>
+                {" | "}
+                <time dateTime={lastUpdated}>Last Updated: {lastUpdated}</time>
+              </>
+            )}
           </p>
         </header>
 

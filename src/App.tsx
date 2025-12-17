@@ -15,6 +15,8 @@ import NotFound from "./pages/NotFound";
 const CookiePolicy = lazy(() => import("./pages/legal/CookiePolicy"));
 const PrivacyPolicy = lazy(() => import("./pages/legal/PrivacyPolicy"));
 const Copyright = lazy(() => import("./pages/legal/Copyright"));
+const CCPAOptOut = lazy(() => import("./pages/legal/CCPAOptOut"));
+const ShippingReturns = lazy(() => import("./pages/legal/ShippingReturns"));
 const Accessibility = lazy(() => import("./pages/Accessibility"));
 
 const queryClient = new QueryClient();
@@ -44,6 +46,9 @@ const App = () => (
                 <Route path="/legal/cookies" element={<CookiePolicy />} />
                 <Route path="/legal/privacy" element={<PrivacyPolicy />} />
                 <Route path="/legal/copyright" element={<Copyright />} />
+                <Route path="/legal/ccpa" element={<CCPAOptOut />} />
+                <Route path="/legal/shipping" element={<ShippingReturns />} />
+                <Route path="/shipping" element={<ShippingReturns />} />
                 <Route path="/accessibility" element={<Accessibility />} />
 
                 {/* Legacy redirects for old footer links */}

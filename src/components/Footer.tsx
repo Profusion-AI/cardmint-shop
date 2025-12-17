@@ -44,14 +44,14 @@ export const Footer = () => {
             <h3 className="font-semibold mb-3 text-foreground">Information</h3>
             <ul className="space-y-2 text-sm">
               <li>
-                <a href="/shipping" className="text-muted-foreground hover:text-mint-spark transition-colors">
+                <Link to="/shipping" className="text-muted-foreground hover:text-mint-spark transition-colors">
                   Shipping & Returns
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="/grading-guide" className="text-muted-foreground hover:text-mint-spark transition-colors">
+                <Link to="/grading-guide" className="text-muted-foreground hover:text-mint-spark transition-colors">
                   Grading Guide
-                </a>
+                </Link>
               </li>
               <li>
                 <Link to="/accessibility" className="text-muted-foreground hover:text-mint-spark transition-colors">
@@ -78,6 +78,11 @@ export const Footer = () => {
               <li>
                 <Link to="/legal/copyright" className="text-muted-foreground hover:text-mint-spark transition-colors">
                   Copyright & Attribution
+                </Link>
+              </li>
+              <li>
+                <Link to="/legal/ccpa" className="text-muted-foreground hover:text-mint-spark transition-colors">
+                  Do Not Sell My Info
                 </Link>
               </li>
             </ul>

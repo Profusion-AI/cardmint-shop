@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
 import {
   ChevronDown,
@@ -12,6 +12,7 @@ import {
   Loader2,
   RotateCcw,
   Search,
+  DollarSign,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
@@ -34,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
 import { Footer } from "@/components/Footer";
 
 // Condition display mapping
@@ -44,6 +46,10 @@ const CONDITION_LABELS: Record<string, { name: string; abbr: string }> = {
   HP: { name: "Heavily Played", abbr: "HP" },
   UNKNOWN: { name: "Unknown", abbr: "?" },
 };
+
+// Page size options for pagination (hard cap at 100 for CDN performance)
+const PAGE_SIZE_OPTIONS = [25, 50, 75, 100] as const;
+const DEFAULT_PAGE_SIZE = 25;
 
 // Era chip component
 function EraChip({
@@ -342,6 +348,107 @@ function VaultSearchBar({
   );
 }
 
+// Price range slider component
+function PriceRangeSlider({
+  min,
+  max,
+  value,
+  onChange,
+  onCommit,
+  disabled,
+}: {
+  min: number;
+  max: number;
+  value: [number, number];
+  onChange: (value: [number, number]) => void;
+  onCommit?: (value: [number, number]) => void;
+  disabled?: boolean;
+}) {
+  // Format price for display
+  const formatPrice = (price: number) => {
+    return price >= 1000 ? `$${(price / 1000).toFixed(1)}k` : `$${price.toFixed(0)}`;
+  };
+
+  // Handle slider change
+  const handleChange = (newValue: number[]) => {
+    if (newValue.length === 2) {
+      onChange([newValue[0], newValue[1]]);
+    }
+  };
+
+  const handleCommit = (newValue: number[]) => {
+    if (!onCommit) return;
+    if (newValue.length !== 2) return;
+    const low = Math.min(newValue[0], newValue[1]);
+    const high = Math.max(newValue[0], newValue[1]);
+    onCommit([low, high]);
+  };
+
+  const isFiltered = value[0] > min || value[1] < max;
+
+  return (
+    <div className="flex flex-col gap-4 min-w-[220px]">
+      {/* Callout header */}
+      <div className="flex items-center gap-2">
+        <div className={`
+          flex items-center justify-center w-6 h-6 rounded-md
+          ${isFiltered
+            ? "bg-mint/20 text-mint"
+            : "bg-white/10 text-paper/50"
+          }
+          transition-colors duration-200
+        `}>
+          <DollarSign className="h-3.5 w-3.5" />
+        </div>
+        <span className={`
+          text-xs font-medium tracking-wide uppercase
+          ${isFiltered ? "text-mint" : "text-paper/60"}
+          transition-colors duration-200
+        `}>
+          Adjust Your Range
+        </span>
+      </div>
+
+      {/* Price labels */}
+      <div className="flex items-center justify-between text-sm tabular-nums">
+        <span className={`
+          font-semibold px-2 py-0.5 rounded
+          ${isFiltered
+            ? "text-mint bg-mint/10"
+            : "text-paper/70 bg-white/5"
+          }
+          transition-all duration-200
+        `}>
+          {formatPrice(value[0])}
+        </span>
+        <span className="text-paper/30 text-xs">to</span>
+        <span className={`
+          font-semibold px-2 py-0.5 rounded
+          ${isFiltered
+            ? "text-mint bg-mint/10"
+            : "text-paper/70 bg-white/5"
+          }
+          transition-all duration-200
+        `}>
+          {formatPrice(value[1])}
+        </span>
+      </div>
+
+      {/* Slider */}
+      <Slider
+        min={min}
+        max={max}
+        step={1}
+        value={value}
+        onValueChange={handleChange}
+        onValueCommit={handleCommit}
+        disabled={disabled}
+        className="[&_[data-orientation=horizontal]]:h-2 [&_.bg-primary]:bg-mint [&_.border-primary]:border-mint [&_.bg-secondary]:bg-white/10"
+      />
+    </div>
+  );
+}
+
 // Product card component
 function ProductCard({
   product,
@@ -542,6 +649,18 @@ export default function Vault() {
   const [selectedConditions, setSelectedConditions] = useState<Set<string>>(new Set());
   const [selectedRarities, setSelectedRarities] = useState<Set<string>>(new Set());
 
+  // Price range state (null means use full range from API)
+  const [priceRange, setPriceRange] = useState<[number, number] | null>(null);
+  // Draft range while dragging the slider (does not trigger queries until commit)
+  const [draftPriceRange, setDraftPriceRange] = useState<[number, number]>([0, 0]);
+
+  // Pagination state
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
+  const [currentOffset, setCurrentOffset] = useState(0);
+
+  // Accumulated products for "Load More" pattern
+  const [accumulatedProducts, setAccumulatedProducts] = useState<VaultProduct[]>([]);
+
   // View state
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [sortBy, setSortBy] = useState<"price-low" | "price-high" | "name-az" | "newest">("newest");
@@ -550,8 +669,18 @@ export default function Vault() {
   const { data: filtersData } = useVaultFilters();
   const filters = filtersData?.filters;
 
-  // Max results we can display (no pagination yet)
-  const VAULT_LIMIT = 100;
+  // Get price bounds from API (for slider min/max)
+  const priceMin = filters?.priceRange?.min ?? 0;
+  const priceMax = filters?.priceRange?.max ?? 1000;
+
+  // Keep draft slider state in sync with the committed filter and API bounds
+  useEffect(() => {
+    setDraftPriceRange(priceRange ?? [priceMin, priceMax]);
+  }, [priceRange, priceMin, priceMax]);
+
+  // Check if price filter is active
+  const isPriceFiltered = priceRange !== null &&
+    (priceRange[0] > priceMin || priceRange[1] < priceMax);
 
   // Trimmed debounced search (matches backend behavior)
   const trimmedDebouncedSearch = debouncedSearch.trim();
@@ -561,23 +690,70 @@ export default function Vault() {
     sets: selectedSets.size > 0 ? Array.from(selectedSets) : undefined,
     conditions: selectedConditions.size > 0 ? Array.from(selectedConditions) : undefined,
     rarities: selectedRarities.size > 0 ? Array.from(selectedRarities) : undefined,
+    minPrice: isPriceFiltered ? priceRange![0] : undefined,
+    maxPrice: isPriceFiltered ? priceRange![1] : undefined,
     search: trimmedDebouncedSearch || undefined,
     sort: sortBy,
-    limit: VAULT_LIMIT,
-  }), [selectedSets, selectedConditions, selectedRarities, trimmedDebouncedSearch, sortBy]);
+    limit: pageSize,
+    offset: currentOffset,
+  }), [selectedSets, selectedConditions, selectedRarities, isPriceFiltered, priceRange, trimmedDebouncedSearch, sortBy, pageSize, currentOffset]);
 
   // Fetch products from API
   const { data: productsData, isLoading, error, isFetching } = useVaultProducts(queryParams);
-  const products = productsData?.products ?? [];
+  const fetchedProducts = productsData?.products ?? [];
   const pagination = productsData?.pagination;
+
+  // Accumulate products when new data arrives
+  useEffect(() => {
+    if (fetchedProducts.length > 0) {
+      if (currentOffset === 0) {
+        // First page or filter changed - replace accumulated products
+        setAccumulatedProducts(fetchedProducts);
+      } else {
+        // Loading more - append new products
+        setAccumulatedProducts((prev) => {
+          // Dedupe by id in case of overlapping results
+          const existingIds = new Set(prev.map((p) => p.id));
+          const newProducts = fetchedProducts.filter((p) => !existingIds.has(p.id));
+          return [...prev, ...newProducts];
+        });
+      }
+    } else if (currentOffset === 0) {
+      // No products and first page - clear accumulated
+      setAccumulatedProducts([]);
+    }
+  }, [fetchedProducts, currentOffset]);
+
+  // Use accumulated products for display
+  const products = accumulatedProducts;
 
   // Determine if we're actively searching (trimmed input differs from trimmed debounced value)
   const isSearching = searchInput.trim() !== trimmedDebouncedSearch || isFetching;
 
-  // Cap displayed result count to what we can actually show
-  const displayedResultCount = pagination?.total !== undefined
-    ? Math.min(pagination.total, VAULT_LIMIT)
-    : null;
+  // Calculate displayed count and hasMore for load more button
+  const totalResults = pagination?.total ?? 0;
+  const displayedCount = products.length;
+  const hasMoreResults = pagination?.hasMore ?? false;
+
+  // Reset offset when filters/search/sort change (but not when pageSize changes)
+  const filterKey = useMemo(() =>
+    JSON.stringify({
+      sets: Array.from(selectedSets).sort(),
+      conditions: Array.from(selectedConditions).sort(),
+      rarities: Array.from(selectedRarities).sort(),
+      priceRange,
+      search: trimmedDebouncedSearch,
+      sort: sortBy,
+    }),
+    [selectedSets, selectedConditions, selectedRarities, priceRange, trimmedDebouncedSearch, sortBy]
+  );
+
+  // Reset offset when filters change (accumulated products will be replaced by new fetch)
+  useEffect(() => {
+    setCurrentOffset(0);
+    // Don't clear accumulatedProducts here - let the new fetch replace them naturally
+    // This prevents "No cards found" flash during filter transitions
+  }, [filterKey]);
 
   // Toggle helpers
   const toggleSet = (name: string) => {
@@ -607,12 +783,30 @@ export default function Vault() {
     });
   };
 
-  // Clear all filters (including search)
+  // Clear all filters (including search and price)
   const clearAllFilters = () => {
     setSearchInput("");
     setSelectedSets(new Set());
     setSelectedConditions(new Set());
     setSelectedRarities(new Set());
+    setPriceRange(null);
+    setCurrentOffset(0);
+    // Don't clear accumulatedProducts - let the new fetch replace them naturally
+  };
+
+  // Handle page size change
+  const handlePageSizeChange = (newSize: string) => {
+    const size = parseInt(newSize, 10);
+    if (PAGE_SIZE_OPTIONS.includes(size as typeof PAGE_SIZE_OPTIONS[number])) {
+      setPageSize(size);
+      setCurrentOffset(0); // Reset to first page when changing page size
+      // Don't clear accumulatedProducts - let the new fetch replace them naturally
+    }
+  };
+
+  // Handle load more
+  const handleLoadMore = () => {
+    setCurrentOffset((prev) => prev + pageSize);
   };
 
   // Use trimmed search for determining active state (matches backend behavior)
@@ -622,7 +816,8 @@ export default function Vault() {
     trimmedSearch.length > 0 ||
     selectedSets.size > 0 ||
     selectedConditions.size > 0 ||
-    selectedRarities.size > 0;
+    selectedRarities.size > 0 ||
+    isPriceFiltered;
 
   // Build active filter chips
   const activeFilterChips: { key: string; label: string; onRemove: () => void }[] = [];
@@ -633,6 +828,16 @@ export default function Vault() {
       key: "search",
       label: `"${trimmedSearch}"`,
       onRemove: () => setSearchInput(""),
+    });
+  }
+
+  // Add price range as a chip if filtered
+  if (isPriceFiltered && priceRange) {
+    const formatPrice = (p: number) => p >= 1000 ? `$${(p / 1000).toFixed(1)}k` : `$${p}`;
+    activeFilterChips.push({
+      key: "price",
+      label: `${formatPrice(priceRange[0])} - ${formatPrice(priceRange[1])}`,
+      onRemove: () => setPriceRange(null),
     });
   }
 
@@ -684,7 +889,7 @@ export default function Vault() {
             value={searchInput}
             onChange={setSearchInput}
             isSearching={isSearching}
-            resultCount={trimmedDebouncedSearch ? displayedResultCount : null}
+            resultCount={trimmedDebouncedSearch ? totalResults : null}
           />
         </div>
       </section>
@@ -734,6 +939,27 @@ export default function Vault() {
                   onToggle={toggleRarity}
                 />
               )}
+              {/* Price range slider */}
+              {priceMax > priceMin && (
+                <div className="px-4 py-3 rounded-xl bg-white/[0.03] border border-white/10 hover:border-white/20 transition-colors">
+                  <PriceRangeSlider
+                    min={Math.floor(priceMin)}
+                    max={Math.ceil(priceMax)}
+                    value={draftPriceRange}
+                    onChange={setDraftPriceRange}
+                    onCommit={(range) => {
+                      const low = Math.max(Math.floor(priceMin), Math.min(range[0], range[1]));
+                      const high = Math.min(Math.ceil(priceMax), Math.max(range[0], range[1]));
+                      if (low <= Math.floor(priceMin) && high >= Math.ceil(priceMax)) {
+                        setPriceRange(null);
+                      } else {
+                        setPriceRange([low, high]);
+                      }
+                    }}
+                    disabled={isLoading}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Spacer */}
@@ -743,10 +969,14 @@ export default function Vault() {
             <span className="text-sm text-paper/50">
               {isLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin inline" />
-              ) : (
+              ) : totalResults > 0 ? (
                 <>
-                  <span className="font-semibold text-paper">{pagination?.total ?? products.length}</span> results
+                  <span className="font-semibold text-paper">{displayedCount}</span>
+                  {" of "}
+                  <span className="font-semibold text-paper">{totalResults}</span>
                 </>
+              ) : (
+                <span className="font-semibold text-paper">0 results</span>
               )}
             </span>
 
@@ -874,6 +1104,63 @@ export default function Vault() {
           )}
         </div>
       </section>
+
+      {/* Pagination controls */}
+      {!isLoading && !error && products.length > 0 && (
+        <section className="px-4 py-6">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              {/* Load More button */}
+              {hasMoreResults && (
+                <Button
+                  onClick={handleLoadMore}
+                  disabled={isFetching}
+                  className="bg-mint hover:bg-mint/90 text-midnight font-medium px-8"
+                >
+                  {isFetching ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Loading...
+                    </>
+                  ) : (
+                    `Load More (${Math.min(pageSize, totalResults - displayedCount)} more)`
+                  )}
+                </Button>
+              )}
+
+              {/* Page size selector */}
+              <div className="flex items-center gap-2 text-sm text-paper/60">
+                <span>Show</span>
+                <Select value={pageSize.toString()} onValueChange={handlePageSizeChange}>
+                  <SelectTrigger className="w-20 h-9 border-white/10 bg-white/5 text-paper/80 hover:bg-white/10">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="border-white/10 bg-midnight/98 backdrop-blur-xl">
+                    {PAGE_SIZE_OPTIONS.map((size) => (
+                      <SelectItem
+                        key={size}
+                        value={size.toString()}
+                        className="text-paper/80 focus:bg-white/10"
+                      >
+                        {size}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span>per page</span>
+              </div>
+            </div>
+
+            {/* Progress indicator */}
+            <div className="mt-4 text-center text-sm text-paper/40">
+              Showing {displayedCount} of {totalResults} cards
+              {!hasMoreResults && totalResults > 0 && (
+                <span className="ml-2 text-mint">— You've seen them all!</span>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Vault update notice */}
       <section className="px-4 pb-12 pt-4">

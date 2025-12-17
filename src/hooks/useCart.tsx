@@ -157,15 +157,41 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setCheckoutError(null);
 
     try {
-      // For now, checkout the first item (single-item checkout)
-      // Multi-item checkout would require Stripe's multi-line-item session
-      const item = items[0];
+      // Cancel any stale checkout sessions from previous abandoned checkouts
+      // This handles the case where user clicked browser back from Stripe
+      const itemsWithSessions = items.filter((item) => item.checkout_session_id);
+      if (itemsWithSessions.length > 0) {
+        // Get unique session IDs (all items in a multi-checkout share the same session)
+        const sessionIds = [...new Set(itemsWithSessions.map((item) => item.checkout_session_id))];
 
-      const response = await fetch("/api/checkout/session", {
+        // Cancel all stale sessions to release reservations
+        await Promise.all(
+          sessionIds.map((sessionId) =>
+            fetch(`/api/checkout/session/${sessionId}/cancel`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+            }).catch((error) => {
+              console.warn("Error cancelling stale checkout session:", error);
+              // Continue anyway - session may have expired or been cancelled already
+            })
+          )
+        );
+
+        // Clear session IDs from cart items before proceeding
+        setItems((prev) =>
+          prev.map((item) => ({ ...item, checkout_session_id: undefined }))
+        );
+      }
+
+      // Multi-item checkout: send all product_uids to the Lot Builder endpoint
+      // Backend calculates discount and creates Stripe session with all items
+      const product_uids = items.map((item) => item.product_uid);
+
+      const response = await fetch("/api/checkout/session/multi", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          product_uid: item.product_uid,
+          product_uids,
           success_url: `${window.location.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${window.location.origin}/vault`,
         }),
@@ -178,8 +204,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
       }
 
       if (data.checkout_url && data.session_id) {
-        // Store session ID with cart item (item is now RESERVED in backend)
-        setItemCheckoutSession(item.product_uid, data.session_id);
+        // Store session ID with ALL cart items (all are now RESERVED in backend)
+        for (const item of items) {
+          setItemCheckoutSession(item.product_uid, data.session_id);
+        }
         // Redirect to Stripe
         window.location.href = data.checkout_url;
       } else if (data.checkout_url) {

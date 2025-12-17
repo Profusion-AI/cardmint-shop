@@ -12,7 +12,9 @@ import {
   AlertCircle,
   Loader2,
   ChevronRight,
+  ShoppingCart,
 } from "lucide-react";
+import { toast } from "sonner";
 import { ProductJsonLd } from "@/components/seo/ProductJsonLd";
 import { parseProductSlug } from "@/utils/slugify";
 import { Footer } from "@/components/Footer";
@@ -107,6 +109,7 @@ export default function ProductDetail() {
   const { slug } = useParams<{ slug: string }>();
   const [showBack, setShowBack] = useState(false);
   const [isZoomed, setIsZoomed] = useState(false);
+  const [justAdded, setJustAdded] = useState(false);
 
   const { data: product, isLoading, error } = useQuery({
     queryKey: ["product", slug],
@@ -192,6 +195,17 @@ export default function ProductDetail() {
       frontImage,
       slug: slug ?? product.product_uid,
     });
+
+    // Show success toast
+    toast.success("Added to your cart!", {
+      description: product.card_name,
+      icon: <ShoppingCart className="w-4 h-4" />,
+      duration: 3000,
+    });
+
+    // Briefly hide the "already in cart" helper text
+    setJustAdded(true);
+    setTimeout(() => setJustAdded(false), 3000);
   };
 
   return (
@@ -412,15 +426,27 @@ export default function ProductDetail() {
                       ? 'In Cart'
                       : 'Add to Cart'}
                 </Button>
-                {inCart && (
-                  <p className="mt-2 text-xs text-aqua text-center">
-                    This card is already in your cart. Checkout from the top right.
-                  </p>
+                {inCart && !justAdded && (
+                  <div className="mt-4 text-center space-y-3">
+                    <p className="text-xs text-aqua">
+                      This card is already in your cart. Checkout from the top right.
+                    </p>
+                    <Link
+                      to="/vault"
+                      className="flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-all duration-200 flex items-center justify-center gap-2 bg-mint text-midnight shadow-lg shadow-mint/25 hover:bg-mint/90"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                      Back to the Vault
+                    </Link>
+                  </div>
                 )}
 
                 {/* Shipping Note */}
                 <p className="mt-4 text-xs text-paper/50 text-center">
-                  Free shipping on orders over $50 • Tracked delivery
+                  <Link to="/shipping" className="hover:text-mint transition-colors">
+                    All orders ship tracked
+                  </Link>
+                  {" • "}Shipping calculated at checkout
                 </p>
               </div>
 

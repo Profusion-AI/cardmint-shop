@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { disableKlaviyo } from '@/lib/klaviyoLoader';
 
 export type ConsentLevel = 'all' | 'necessary' | 'none' | 'custom';
 
@@ -105,10 +106,34 @@ export function useCookieConsent() {
   });
 
   // Re-check on mount (handles SSR hydration edge cases)
+  // Also honors Global Privacy Control (GPC) signal per CCPA requirements
   useEffect(() => {
     const consentLevel = getConsentIfValid();
     const granularConsent = getGranularConsentIfValid() ||
       (consentLevel ? levelToGranular(consentLevel) : null);
+
+    // Honor Global Privacy Control (GPC) signal
+    // GPC is a legally binding opt-out signal in California (CCPA/CPRA)
+    // When present, we default to necessary-only consent
+    const gpcEnabled = typeof navigator !== 'undefined' &&
+      (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true;
+
+    if (gpcEnabled && !consentLevel) {
+      // User has GPC enabled and hasn't made a choice yet
+      // Auto-apply necessary-only consent to honor their preference
+      const gpcConsent = levelToGranular('necessary');
+      localStorage.setItem(CONSENT_KEY, 'necessary');
+      localStorage.setItem(CONSENT_TIMESTAMP_KEY, Date.now().toString());
+      localStorage.setItem(GRANULAR_KEY, JSON.stringify(gpcConsent));
+      disableKlaviyo();
+      setState({
+        hasConsented: true,
+        consentLevel: 'necessary',
+        granularConsent: gpcConsent,
+      });
+      return;
+    }
+
     setState({
       hasConsented: consentLevel !== null,
       consentLevel,
@@ -119,17 +144,17 @@ export function useCookieConsent() {
   const setConsent = useCallback((choice: ConsentLevel) => {
     const granularConsent = levelToGranular(choice);
 
-    if (choice === 'all' || choice === 'necessary') {
-      // Store in localStorage with timestamp for 6-month expiry
-      localStorage.setItem(CONSENT_KEY, choice);
-      localStorage.setItem(CONSENT_TIMESTAMP_KEY, Date.now().toString());
-      localStorage.setItem(GRANULAR_KEY, JSON.stringify(granularConsent));
-      // Clear any session opt-out
-      sessionStorage.removeItem(SESSION_OPTOUT_KEY);
-    } else {
-      // 'none' - store only in sessionStorage
-      sessionStorage.setItem(SESSION_OPTOUT_KEY, 'opted_out');
-      // Don't store in localStorage - respects "no cookies" choice
+    // Store all consent choices in localStorage with timestamp for 6-month expiry
+    // This includes 'none' to respect user's decline and avoid re-nagging
+    localStorage.setItem(CONSENT_KEY, choice);
+    localStorage.setItem(CONSENT_TIMESTAMP_KEY, Date.now().toString());
+    localStorage.setItem(GRANULAR_KEY, JSON.stringify(granularConsent));
+    // Clear any legacy session opt-out
+    sessionStorage.removeItem(SESSION_OPTOUT_KEY);
+
+    // If user declined marketing consent, ensure Klaviyo is disabled
+    if (!granularConsent.marketing) {
+      disableKlaviyo();
     }
 
     setState({
@@ -148,6 +173,11 @@ export function useCookieConsent() {
     localStorage.setItem(CONSENT_TIMESTAMP_KEY, Date.now().toString());
     localStorage.setItem(GRANULAR_KEY, JSON.stringify(safeConsent));
     sessionStorage.removeItem(SESSION_OPTOUT_KEY);
+
+    // If user disabled marketing consent, ensure Klaviyo is disabled and cleaned up
+    if (!safeConsent.marketing) {
+      disableKlaviyo();
+    }
 
     setState({
       hasConsented: true,
