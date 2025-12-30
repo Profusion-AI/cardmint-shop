@@ -13,13 +13,13 @@ const COOKIE_CATEGORIES = [
   {
     id: 'essential' as const,
     name: 'Essential',
-    description: 'Cart, sessions, payments',
+    description: 'Cart & payments',
     disabled: true,
   },
   {
     id: 'performance' as const,
     name: 'Performance',
-    description: 'Analytics & usage data',
+    description: 'Not currently used',
     disabled: false,
   },
   {

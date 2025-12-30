@@ -366,8 +366,8 @@ export default function PrivacyPolicy() {
               <span className="font-medium text-paper">We Share With</span>
             </div>
             <p className="text-sm text-paper/60">
-              Trusted partners essential to operations: shipping carriers, payment
-              processors, and analytics tools.
+              Trusted partners essential to operations: shipping carriers and payment
+              processors.
             </p>
           </div>
           <div className="p-4 rounded-lg bg-white/[0.02] border border-white/[0.08]">
@@ -408,12 +408,6 @@ export default function PrivacyPolicy() {
                 url: "https://www.klaviyo.com/legal/privacy/privacy-notice",
               },
             ]}
-          />
-          <ServiceCard
-            name="Plausible Analytics"
-            purpose="Website Analytics"
-            location="European Union"
-            details="Privacy-friendly analytics that does not use cookies or collect personal data. Provides aggregate statistics only. Data processed in the EU."
           />
           <ServiceCard
             name="Stripe"
@@ -512,10 +506,6 @@ export default function PrivacyPolicy() {
           <RetentionItem
             type="Support correspondence"
             period="2 years after last contact"
-          />
-          <RetentionItem
-            type="Analytics (Plausible)"
-            period="24 months (aggregate only)"
           />
         </div>
       </AccordionSection>

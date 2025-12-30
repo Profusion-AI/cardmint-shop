@@ -170,13 +170,13 @@ export default function CookiePolicy() {
         <CookieTypeCard
           icon={Shield}
           name="Essential Cookies"
-          description="Keep your cart saved, maintain sign-in sessions, and process secure payments. These are necessary for the site to function."
+          description="Keep your cart saved and process secure payments via Stripe. These are necessary for the site to function."
           required
         />
         <CookieTypeCard
           icon={BarChart3}
           name="Performance Cookies"
-          description="Help us understand how collectors browse (which sets or cards get the most views). We use Plausible Analytics, which is privacy-friendly and does not use cookies."
+          description="Reserved for future privacy-friendly analytics. We do not currently use any analytics or performance tracking cookies."
         />
         <CookieTypeCard
           icon={Settings}
@@ -259,9 +259,9 @@ export default function CookiePolicy() {
 
       {/* Why it matters */}
       <Callout icon={Info} variant="info">
-        <strong>Why It Matters:</strong> We use cookies to keep CardMint fast,
-        fair, and tailored to your collection habits — not to track you across
-        the web. Your privacy is not a line item; it's part of our brand promise.
+        <strong>Why It Matters:</strong> We use cookies to keep CardMint fast
+        and to remember your cart — not for cross-site tracking or ad targeting.
+        Your privacy is not a line item; it's part of our brand promise.
       </Callout>
 
       {/* Footer */}
