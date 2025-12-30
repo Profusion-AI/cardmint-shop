@@ -13,6 +13,7 @@ import {
   Loader2,
   ChevronRight,
   ShoppingCart,
+  Box,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ProductJsonLd } from "@/components/seo/ProductJsonLd";
@@ -21,6 +22,7 @@ import { Footer } from "@/components/Footer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/hooks/useCart";
+import { Card3DViewerModal } from "@/components/Card3DViewerModal";
 
 /**
  * Product type matching backend products table schema.
@@ -109,7 +111,9 @@ export default function ProductDetail() {
   const { slug } = useParams<{ slug: string }>();
   const [showBack, setShowBack] = useState(false);
   const [isZoomed, setIsZoomed] = useState(false);
+  const [is3DOpen, setIs3DOpen] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
+  const [isAddingToCart, setIsAddingToCart] = useState(false);
 
   const { data: product, isLoading, error } = useQuery({
     queryKey: ["product", slug],
@@ -182,30 +186,41 @@ export default function ProductDetail() {
   const frontImage = product.cdn_image_url || "/placeholder.svg";
   const backImage = product.cdn_back_image_url;
   const hasBackImage = !!backImage;
+  const has3DPreview = !!product.cdn_image_url && !!product.cdn_back_image_url;
   const currentImage = showBack && hasBackImage ? backImage : frontImage;
 
-  const handleAddToCart = () => {
-    addItem({
-      product_uid: product.product_uid,
-      name: product.card_name,
-      set: product.set_name,
-      number: product.collector_no ?? "",
-      condition: conditionInfo.name,
-      price,
-      frontImage,
-      slug: slug ?? product.product_uid,
-    });
+  const handleAddToCart = async () => {
+    if (isAddingToCart) return; // Prevent double-clicks
 
-    // Show success toast
-    toast.success("Added to your cart!", {
-      description: product.card_name,
-      icon: <ShoppingCart className="w-4 h-4" />,
-      duration: 3000,
-    });
+    setIsAddingToCart(true);
+    try {
+      await addItem({
+        product_uid: product.product_uid,
+        name: product.card_name,
+        set: product.set_name,
+        number: product.collector_no ?? "",
+        condition: conditionInfo.name,
+        price,
+        frontImage,
+        slug: slug ?? product.product_uid,
+      });
 
-    // Briefly hide the "already in cart" helper text
-    setJustAdded(true);
-    setTimeout(() => setJustAdded(false), 3000);
+      // Show success toast
+      toast.success("Added to your cart!", {
+        description: product.card_name,
+        icon: <ShoppingCart className="w-4 h-4" />,
+        duration: 3000,
+      });
+
+      // Briefly hide the "already in cart" helper text
+      setJustAdded(true);
+      setTimeout(() => setJustAdded(false), 3000);
+    } catch (error) {
+      // Show error toast with specific message
+      toast.error(error instanceof Error ? error.message : "Failed to add to cart");
+    } finally {
+      setIsAddingToCart(false);
+    }
   };
 
   return (
@@ -257,6 +272,14 @@ export default function ProductDetail() {
           </div>
         </div>
       )}
+
+      <Card3DViewerModal
+        open={is3DOpen && has3DPreview}
+        onClose={() => setIs3DOpen(false)}
+        title={product.card_name}
+        frontImageUrl={frontImage}
+        backImageUrl={backImage ?? frontImage}
+      />
 
       <div className="min-h-screen bg-oxford-blue">
         {/* Breadcrumb */}
@@ -337,6 +360,15 @@ export default function ProductDetail() {
                     <RotateCcw className="w-4 h-4" />
                     Back
                   </button>
+                  {has3DPreview && (
+                    <button
+                      onClick={() => setIs3DOpen(true)}
+                      className="flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-all duration-200 flex items-center justify-center gap-2 bg-white/5 text-paper/70 hover:bg-white/10 border border-white/10"
+                    >
+                      <Box className="w-4 h-4" />
+                      3D
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -416,7 +448,7 @@ export default function ProductDetail() {
 
                 {/* Add to Cart Button */}
                 <Button
-                  disabled={availableStock === 0 || inCart}
+                  disabled={availableStock === 0 || inCart || isAddingToCart}
                   className="w-full mt-6 h-14 text-lg font-semibold bg-mint hover:bg-mint/90 text-midnight rounded-xl shadow-lg shadow-mint/25 disabled:bg-white/10 disabled:text-paper/30 disabled:shadow-none transition-all duration-200"
                   onClick={handleAddToCart}
                 >
@@ -424,7 +456,9 @@ export default function ProductDetail() {
                     ? 'Out of Stock'
                     : inCart
                       ? 'In Cart'
-                      : 'Add to Cart'}
+                      : isAddingToCart
+                        ? 'Reserving...'
+                        : 'Add to Cart'}
                 </Button>
                 {inCart && !justAdded && (
                   <div className="mt-4 text-center space-y-3">

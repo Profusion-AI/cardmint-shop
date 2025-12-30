@@ -1,8 +1,9 @@
 /**
  * Cart Hook & Context
  *
- * Simple cart state management with localStorage persistence.
+ * Cart state management with localStorage persistence and backend reservation integration.
  * CartMint model: Each card is unique (1:1 scan), so cart stores product_uid references.
+ * Items are reserved on the backend when added to cart (15-min TTL).
  */
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
@@ -26,9 +27,12 @@ interface CartContextValue {
   items: CartItem[];
   itemCount: number;
   subtotal: number;
-  addItem: (item: Omit<CartItem, "addedAt">) => void;
+  cartSessionId: string;
+  addItem: (item: Omit<CartItem, "addedAt">) => Promise<void>;
   removeItem: (productUid: string) => Promise<void>;
   clearCart: () => Promise<void>;
+  /** Clear local cart state only - does NOT release backend reservations. Use after successful payment. */
+  clearLocalCart: () => void;
   isInCart: (productUid: string) => boolean;
   isCheckingOut: boolean;
   checkoutError: string | null;
@@ -38,6 +42,43 @@ interface CartContextValue {
 const CartContext = createContext<CartContextValue | null>(null);
 
 const CART_STORAGE_KEY = "cardmint_cart";
+const CART_SESSION_ID_KEY = "cardmint_cart_session_id";
+const CART_ACTIVITY_KEY = "cardmint_cart_last_activity";
+const CART_TIMEOUT_MS = 15 * 60 * 1000;
+
+/**
+ * Generate a UUID v4 for cart session identification.
+ * Uses crypto.randomUUID() if available (modern browsers), otherwise falls back.
+ */
+function generateCartSessionId(): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback for older browsers
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+function loadOrCreateCartSessionId(): string {
+  try {
+    const stored = localStorage.getItem(CART_SESSION_ID_KEY);
+    if (stored && stored.length > 0) {
+      return stored;
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  const newId = generateCartSessionId();
+  try {
+    localStorage.setItem(CART_SESSION_ID_KEY, newId);
+  } catch {
+    // Ignore storage errors
+  }
+  return newId;
+}
 
 function loadCartFromStorage(): CartItem[] {
   try {
@@ -47,7 +88,11 @@ function loadCartFromStorage(): CartItem[] {
       // Validate structure
       if (Array.isArray(parsed)) {
         return parsed.filter(
-          (item) => item.product_uid && item.name && typeof item.price === "number"
+          (item) =>
+            item.product_uid &&
+            item.name &&
+            typeof item.price === "number" &&
+            typeof item.addedAt === "number"
         );
       }
     }
@@ -55,6 +100,35 @@ function loadCartFromStorage(): CartItem[] {
     // Ignore parse errors
   }
   return [];
+}
+
+function loadCartActivityFromStorage(items: CartItem[]): number | null {
+  try {
+    const stored = localStorage.getItem(CART_ACTIVITY_KEY);
+    if (stored) {
+      const parsed = Number(stored);
+      if (!Number.isNaN(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+  } catch {
+    // Ignore storage errors
+  }
+
+  if (items.length === 0) return null;
+  return Math.max(...items.map((item) => item.addedAt));
+}
+
+function persistCartActivity(timestamp: number | null): void {
+  try {
+    if (timestamp) {
+      localStorage.setItem(CART_ACTIVITY_KEY, String(timestamp));
+    } else {
+      localStorage.removeItem(CART_ACTIVITY_KEY);
+    }
+  } catch {
+    // Ignore storage errors
+  }
 }
 
 function saveCartToStorage(items: CartItem[]): void {
@@ -69,10 +143,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [lastActivityAt, setLastActivityAt] = useState<number | null>(null);
+
+  // Persistent cart session ID - generated once and stored in localStorage
+  const [cartSessionId] = useState<string>(() => loadOrCreateCartSessionId());
 
   // Load cart from localStorage on mount
   useEffect(() => {
-    setItems(loadCartFromStorage());
+    const storedItems = loadCartFromStorage();
+    setItems(storedItems);
+    setLastActivityAt(loadCartActivityFromStorage(storedItems));
   }, []);
 
   // Save to localStorage whenever items change
@@ -83,27 +163,99 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const itemCount = items.length;
   const subtotal = items.reduce((sum, item) => sum + item.price, 0);
 
-  const addItem = useCallback((item: Omit<CartItem, "addedAt">) => {
+  const recordCartActivity = useCallback(() => {
+    const now = Date.now();
+    setLastActivityAt(now);
+    persistCartActivity(now);
+  }, []);
+
+  const clearCartActivity = useCallback(() => {
+    setLastActivityAt(null);
+    persistCartActivity(null);
+  }, []);
+
+  /**
+   * Add item to cart - reserves on backend first, then adds to local state.
+   * Throws error if reservation fails (item unavailable, rate limited, etc.)
+   */
+  const addItem = useCallback(async (item: Omit<CartItem, "addedAt">) => {
+    // Check for duplicate first (each card is unique)
+    if (items.some((i) => i.product_uid === item.product_uid)) {
+      return; // Already in cart - silently skip
+    }
+
+    // Reserve on backend
+    const response = await fetch("/api/cart/reserve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        product_uids: [item.product_uid],
+        cart_session_id: cartSessionId,
+      }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        throw new Error("Too many requests. Please try again in a moment.");
+      }
+      throw new Error("Failed to reserve item");
+    }
+
+    const data = await response.json();
+    if (!data.ok || !data.reserved?.includes(item.product_uid)) {
+      // Check for specific failure reason
+      const failReason = data.failed?.find(
+        (f: { product_uid: string; reason: string }) => f.product_uid === item.product_uid
+      )?.reason;
+      if (failReason === "UNAVAILABLE") {
+        throw new Error("This item is no longer available");
+      }
+      if (failReason === "MAX_ITEMS_EXCEEDED") {
+        throw new Error("Cart is full (max 10 items)");
+      }
+      throw new Error("Failed to reserve item");
+    }
+
+    // Add to local state only after backend confirms
     setItems((prev) => {
-      // Don't add duplicates (each card is unique)
+      // Double-check no duplicate (race condition safety)
       if (prev.some((i) => i.product_uid === item.product_uid)) {
         return prev;
       }
       return [...prev, { ...item, addedAt: Date.now() }];
     });
+    recordCartActivity();
     setCheckoutError(null);
-  }, []);
+  }, [items, cartSessionId, recordCartActivity]);
 
+  /**
+   * Remove item from cart - releases backend reservation and removes from local state.
+   */
   const removeItem = useCallback(async (productUid: string) => {
     // Find the item to check if it has an active checkout session
     const itemToRemove = items.find((i) => i.product_uid === productUid);
+    if (!itemToRemove) return;
 
     // Remove from cart immediately for snappy UI
     setItems((prev) => prev.filter((i) => i.product_uid !== productUid));
     setCheckoutError(null);
+    recordCartActivity();
 
-    // If item had checkout session, cancel it in background to release the reservation
-    if (itemToRemove?.checkout_session_id) {
+    // Release from backend cart (fire-and-forget - item will auto-expire if this fails)
+    fetch("/api/cart/release", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        product_uids: [productUid],
+        cart_session_id: cartSessionId,
+      }),
+    }).catch((error) => {
+      console.warn("Error releasing cart item:", error);
+      // Item will auto-expire via TTL
+    });
+
+    // If item had checkout session, cancel it in background to release the Stripe reservation
+    if (itemToRemove.checkout_session_id) {
       fetch(`/api/checkout/session/${itemToRemove.checkout_session_id}/cancel`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -112,15 +264,35 @@ export function CartProvider({ children }: { children: ReactNode }) {
         // Session will expire eventually via TTL
       });
     }
-  }, [items]);
+  }, [items, cartSessionId, recordCartActivity]);
 
+  /**
+   * Clear all items from cart - releases all backend reservations.
+   */
   const clearCart = useCallback(async () => {
-    // Capture items with active sessions before clearing
+    // Capture items before clearing
+    const productUids = items.map((i) => i.product_uid);
     const itemsWithSessions = items.filter((item) => item.checkout_session_id);
 
     // Clear cart immediately for snappy UI
     setItems([]);
     setCheckoutError(null);
+    clearCartActivity();
+
+    // Release all items from backend cart
+    if (productUids.length > 0) {
+      fetch("/api/cart/release", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_uids: productUids,
+          cart_session_id: cartSessionId,
+        }),
+      }).catch((error) => {
+        console.warn("Error releasing cart items:", error);
+        // Items will auto-expire via TTL
+      });
+    }
 
     // Cancel all active checkout sessions in background
     itemsWithSessions.forEach((item) => {
@@ -132,7 +304,93 @@ export function CartProvider({ children }: { children: ReactNode }) {
         // Session will expire eventually via TTL
       });
     });
-  }, [items]);
+  }, [items, cartSessionId, clearCartActivity]);
+
+  /**
+   * Clear local cart state only - does NOT release backend reservations.
+   * Use this after successful payment to avoid accidentally releasing paid inventory.
+   * The webhook will mark items as SOLD; we just need to clear local UI state.
+   */
+  const clearLocalCart = useCallback(() => {
+    setItems([]);
+    setCheckoutError(null);
+    clearCartActivity();
+    // Note: We intentionally do NOT call /api/cart/release or /api/checkout/session/cancel
+    // The Stripe webhook will handle marking items as SOLD after payment
+  }, [clearCartActivity]);
+
+  const validateCartReservations = useCallback(async (): Promise<boolean> => {
+    if (items.length === 0) return true;
+
+    try {
+      const response = await fetch("/api/cart/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_uids: items.map((item) => item.product_uid),
+          cart_session_id: cartSessionId,
+        }),
+      });
+
+      if (!response.ok) {
+        return true;
+      }
+
+      const data = await response.json();
+      if (!data.ok) {
+        return true;
+      }
+
+      const validSet = new Set<string>(data.valid || []);
+      const nextItems = items.filter((item) => validSet.has(item.product_uid));
+
+      if (nextItems.length !== items.length) {
+        setItems(nextItems);
+        if (nextItems.length === 0) {
+          clearCartActivity();
+        }
+      }
+
+      return nextItems.length > 0;
+    } catch {
+      return true;
+    }
+  }, [items, cartSessionId, clearCartActivity]);
+
+  const expireCartIfIdle = useCallback((): boolean => {
+    if (!lastActivityAt) return false;
+    if (Date.now() - lastActivityAt <= CART_TIMEOUT_MS) return false;
+    void clearCart();
+    setCheckoutError("Your cart expired after 15 minutes of inactivity.");
+    return true;
+  }, [clearCart, lastActivityAt]);
+
+  useEffect(() => {
+    if (items.length === 0) return;
+    if (expireCartIfIdle()) return;
+    void validateCartReservations();
+  }, [items, expireCartIfIdle, validateCartReservations]);
+
+  useEffect(() => {
+    if (items.length === 0) return;
+
+    const intervalId = window.setInterval(() => {
+      expireCartIfIdle();
+    }, 30_000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      if (expireCartIfIdle()) return;
+      void validateCartReservations();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [items.length, expireCartIfIdle, validateCartReservations]);
 
   const isInCart = useCallback(
     (productUid: string) => items.some((i) => i.product_uid === productUid),
@@ -152,9 +410,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const checkout = useCallback(async () => {
     if (items.length === 0) return;
+    if (expireCartIfIdle()) return;
+
+    const stillValid = await validateCartReservations();
+    if (!stillValid) {
+      setCheckoutError("Your cart expired. Please add items again.");
+      return;
+    }
 
     setIsCheckingOut(true);
     setCheckoutError(null);
+    recordCartActivity();
 
     try {
       // Cancel any stale checkout sessions from previous abandoned checkouts
@@ -192,8 +458,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           product_uids,
+          cart_session_id: cartSessionId,
           success_url: `${window.location.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${window.location.origin}/vault`,
+          cancel_url: `${window.location.origin}/checkout/cancel`,
         }),
       });
 
@@ -222,7 +489,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsCheckingOut(false);
     }
-  }, [items, setItemCheckoutSession]);
+  }, [items, setItemCheckoutSession, expireCartIfIdle, validateCartReservations, recordCartActivity]);
 
   return (
     <CartContext.Provider
@@ -230,9 +497,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
         items,
         itemCount,
         subtotal,
+        cartSessionId,
         addItem,
         removeItem,
         clearCart,
+        clearLocalCart,
         isInCart,
         isCheckingOut,
         checkoutError,

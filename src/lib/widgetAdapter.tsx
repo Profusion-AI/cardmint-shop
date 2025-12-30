@@ -154,10 +154,13 @@ function renderWidget(widget: Widget, index: number): ReactNode {
   }
 
   // Render with error boundary
+  // Note: Widget components are currently hardcoded and don't accept props.
+  // Props from CMS (parsed.data) are validated but not passed until components
+  // are updated to accept them for dynamic content.
   return (
     <WidgetErrorBoundary key={widget.id ?? `${type}-${index}`} widgetType={type}>
       <Suspense fallback={<WidgetSkeleton />}>
-        <Component {...(parsed.data || {})} />
+        <Component />
       </Suspense>
     </WidgetErrorBoundary>
   );

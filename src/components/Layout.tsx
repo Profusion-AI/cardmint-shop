@@ -5,11 +5,7 @@ import { loadKlaviyo, disableKlaviyo } from "@/lib/klaviyoLoader";
 
 /**
  * Layout - Wraps all pages with persistent navigation
- *
- * State scaffolding notes:
- * - cartItemCount and isLoggedIn will be populated from global state
- *   when cart/auth contexts are implemented
- * - For now, both default to their empty/logged-out states
+ * TopBanner uses useCart() hook internally to get cart state.
  */
 
 interface LayoutProps {
@@ -17,9 +13,6 @@ interface LayoutProps {
 }
 
 export function Layout({ children }: LayoutProps) {
-  // TODO: Get cart state from CartContext when Stripe checkout is implemented
-  // const { itemCount } = useCart();
-
   // TODO: Get auth state from AuthContext when user accounts are implemented
   // const { isLoggedIn } = useAuth();
 
@@ -40,10 +33,7 @@ export function Layout({ children }: LayoutProps) {
 
   return (
     <div className="min-h-screen bg-oxford-blue">
-      <TopBanner
-        cartItemCount={0}  // TODO: Replace with itemCount from cart context
-        isLoggedIn={false} // TODO: Replace with isLoggedIn from auth context
-      />
+      <TopBanner isLoggedIn={false} />
       {children}
     </div>
   );

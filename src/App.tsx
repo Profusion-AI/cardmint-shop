@@ -19,6 +19,10 @@ const CCPAOptOut = lazy(() => import("./pages/legal/CCPAOptOut"));
 const ShippingReturns = lazy(() => import("./pages/legal/ShippingReturns"));
 const Accessibility = lazy(() => import("./pages/Accessibility"));
 
+// Checkout flow pages (lazy loaded)
+const CheckoutSuccess = lazy(() => import("./pages/CheckoutSuccess"));
+const CheckoutCancel = lazy(() => import("./pages/CheckoutCancel"));
+
 const queryClient = new QueryClient();
 
 // Loading fallback for lazy pages
@@ -54,6 +58,10 @@ const App = () => (
                 {/* Legacy redirects for old footer links */}
                 <Route path="/privacy" element={<Navigate to="/legal/privacy" replace />} />
                 <Route path="/terms" element={<Navigate to="/legal/copyright" replace />} />
+
+                {/* Checkout flow routes */}
+                <Route path="/checkout/success" element={<CheckoutSuccess />} />
+                <Route path="/checkout/cancel" element={<CheckoutCancel />} />
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
