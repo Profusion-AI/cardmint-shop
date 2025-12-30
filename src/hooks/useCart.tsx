@@ -62,11 +62,26 @@ function generateCartSessionId(): string {
   });
 }
 
+/**
+ * UUID v4 validation regex - matches standard UUID format.
+ * Used to validate stored cart session IDs to prevent "perma-broken cart"
+ * from corrupted localStorage values.
+ */
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isValidUUID(value: string): boolean {
+  return UUID_REGEX.test(value);
+}
+
 function loadOrCreateCartSessionId(): string {
   try {
     const stored = localStorage.getItem(CART_SESSION_ID_KEY);
-    if (stored && stored.length > 0) {
+    if (stored && isValidUUID(stored)) {
       return stored;
+    }
+    // Invalid or missing - clear corrupted value if present
+    if (stored) {
+      localStorage.removeItem(CART_SESSION_ID_KEY);
     }
   } catch {
     // Ignore storage errors
@@ -319,8 +334,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
     // The Stripe webhook will handle marking items as SOLD after payment
   }, [clearCartActivity]);
 
-  const validateCartReservations = useCallback(async (): Promise<boolean> => {
-    if (items.length === 0) return true;
+  /**
+   * Validate cart reservations with the backend.
+   * Returns the validated items array to avoid stale closure issues.
+   * The caller should use the returned items for subsequent operations.
+   */
+  const validateCartReservations = useCallback(async (): Promise<{ valid: boolean; items: CartItem[] }> => {
+    if (items.length === 0) return { valid: true, items: [] };
 
     try {
       const response = await fetch("/api/cart/validate", {
@@ -333,12 +353,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
       });
 
       if (!response.ok) {
-        return true;
+        return { valid: true, items };
       }
 
       const data = await response.json();
       if (!data.ok) {
-        return true;
+        return { valid: true, items };
       }
 
       const validSet = new Set<string>(data.valid || []);
@@ -351,9 +371,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      return nextItems.length > 0;
+      return { valid: nextItems.length > 0, items: nextItems };
     } catch {
-      return true;
+      return { valid: true, items };
     }
   }, [items, cartSessionId, clearCartActivity]);
 
@@ -368,8 +388,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (items.length === 0) return;
     if (expireCartIfIdle()) return;
+    // Fire-and-forget validation - state updates happen inside
     void validateCartReservations();
-  }, [items, expireCartIfIdle, validateCartReservations]);
+  }, [items.length, expireCartIfIdle, validateCartReservations]);
 
   useEffect(() => {
     if (items.length === 0) return;
@@ -381,6 +402,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const handleVisibilityChange = () => {
       if (document.visibilityState !== "visible") return;
       if (expireCartIfIdle()) return;
+      // Fire-and-forget validation - state updates happen inside
       void validateCartReservations();
     };
 
@@ -412,9 +434,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (items.length === 0) return;
     if (expireCartIfIdle()) return;
 
-    const stillValid = await validateCartReservations();
-    if (!stillValid) {
+    const validation = await validateCartReservations();
+    if (!validation.valid) {
       setCheckoutError("Your cart expired. Please add items again.");
+      return;
+    }
+
+    // Use the validated items from the return value to avoid stale closure
+    const validatedItems = validation.items;
+    if (validatedItems.length === 0) {
+      setCheckoutError("Your cart is empty.");
       return;
     }
 
@@ -425,7 +454,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     try {
       // Cancel any stale checkout sessions from previous abandoned checkouts
       // This handles the case where user clicked browser back from Stripe
-      const itemsWithSessions = items.filter((item) => item.checkout_session_id);
+      const itemsWithSessions = validatedItems.filter((item) => item.checkout_session_id);
       if (itemsWithSessions.length > 0) {
         // Get unique session IDs (all items in a multi-checkout share the same session)
         const sessionIds = [...new Set(itemsWithSessions.map((item) => item.checkout_session_id))];
@@ -451,7 +480,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
       // Multi-item checkout: send all product_uids to the Lot Builder endpoint
       // Backend calculates discount and creates Stripe session with all items
-      const product_uids = items.map((item) => item.product_uid);
+      const product_uids = validatedItems.map((item) => item.product_uid);
 
       const response = await fetch("/api/checkout/session/multi", {
         method: "POST",
@@ -472,7 +501,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
       if (data.checkout_url && data.session_id) {
         // Store session ID with ALL cart items (all are now RESERVED in backend)
-        for (const item of items) {
+        for (const item of validatedItems) {
           setItemCheckoutSession(item.product_uid, data.session_id);
         }
         // Redirect to Stripe

@@ -1,12 +1,24 @@
+import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { XCircle, ShoppingBag, ArrowRight, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useCart } from "@/hooks/useCart";
 
 /**
  * CheckoutCancel - Displayed when user cancels Stripe checkout
- * Explains what happened and offers to return to shopping
+ * Releases cart reservations and explains what happened.
  */
 export default function CheckoutCancel() {
+  const { clearCart } = useCart();
+  const hasCleared = useRef(false);
+
+  // Release cart reservations on mount (only once)
+  useEffect(() => {
+    if (hasCleared.current) return;
+    hasCleared.current = true;
+    void clearCart();
+  }, [clearCart]);
+
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4 py-16">
       <div className="max-w-lg w-full text-center">
