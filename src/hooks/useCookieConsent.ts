@@ -157,11 +157,12 @@ export function useCookieConsent() {
       disablePostHog();
     }
 
-    setState({
+    setState((prev) => ({
       hasConsented: true,
       consentLevel: choice,
       granularConsent,
-    });
+      gpcDetected: prev.gpcDetected,
+    }));
   }, []);
 
   const setGranularConsent = useCallback((consent: GranularConsent) => {
@@ -184,11 +185,12 @@ export function useCookieConsent() {
       disablePostHog();
     }
 
-    setState({
+    setState((prev) => ({
       hasConsented: true,
       consentLevel: level,
       granularConsent: safeConsent,
-    });
+      gpcDetected: prev.gpcDetected,
+    }));
   }, []);
 
   const clearConsent = useCallback(() => {
@@ -196,11 +198,12 @@ export function useCookieConsent() {
     localStorage.removeItem(CONSENT_TIMESTAMP_KEY);
     localStorage.removeItem(GRANULAR_KEY);
     sessionStorage.removeItem(SESSION_OPTOUT_KEY);
-    setState({
+    setState((prev) => ({
       hasConsented: false,
       consentLevel: null,
       granularConsent: null,
-    });
+      gpcDetected: prev.gpcDetected,
+    }));
   }, []);
 
   return {
