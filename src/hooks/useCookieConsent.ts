@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { disableKlaviyo } from '@/lib/klaviyoLoader';
+import { disablePostHog } from '@/lib/posthogLoader';
 
 export type ConsentLevel = 'all' | 'necessary' | 'none' | 'custom';
 
@@ -16,6 +17,7 @@ interface CookieConsentState {
   hasConsented: boolean;
   consentLevel: ConsentLevel | null;
   granularConsent: GranularConsent | null;
+  gpcDetected: boolean;
 }
 
 const CONSENT_KEY = 'cookieConsent';
@@ -93,6 +95,12 @@ function getConsentIfValid(): ConsentLevel | null {
   return null;
 }
 
+// Check if GPC (Global Privacy Control) is enabled in the browser
+function isGpcEnabled(): boolean {
+  return typeof navigator !== 'undefined' &&
+    (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true;
+}
+
 export function useCookieConsent() {
   const [state, setState] = useState<CookieConsentState>(() => {
     const consentLevel = getConsentIfValid();
@@ -102,42 +110,29 @@ export function useCookieConsent() {
       hasConsented: consentLevel !== null,
       consentLevel,
       granularConsent,
+      gpcDetected: isGpcEnabled(),
     };
   });
 
   // Re-check on mount (handles SSR hydration edge cases)
-  // Also honors Global Privacy Control (GPC) signal per CCPA requirements
+  // GPC (Global Privacy Control) is detected but NOT auto-applied - we show the modal
+  // with GPC info so users can see their browser preference and choose to override
   useEffect(() => {
     const consentLevel = getConsentIfValid();
     const granularConsent = getGranularConsentIfValid() ||
       (consentLevel ? levelToGranular(consentLevel) : null);
+    const gpcEnabled = isGpcEnabled();
 
-    // Honor Global Privacy Control (GPC) signal
-    // GPC is a legally binding opt-out signal in California (CCPA/CPRA)
-    // When present, we default to necessary-only consent
-    const gpcEnabled = typeof navigator !== 'undefined' &&
-      (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true;
-
-    if (gpcEnabled && !consentLevel) {
-      // User has GPC enabled and hasn't made a choice yet
-      // Auto-apply necessary-only consent to honor their preference
-      const gpcConsent = levelToGranular('necessary');
-      localStorage.setItem(CONSENT_KEY, 'necessary');
-      localStorage.setItem(CONSENT_TIMESTAMP_KEY, Date.now().toString());
-      localStorage.setItem(GRANULAR_KEY, JSON.stringify(gpcConsent));
-      disableKlaviyo();
-      setState({
-        hasConsented: true,
-        consentLevel: 'necessary',
-        granularConsent: gpcConsent,
-      });
-      return;
-    }
+    // Note: We no longer auto-apply consent when GPC is detected.
+    // Instead, we expose gpcDetected so the UI can inform users about their
+    // browser privacy preference while still showing the consent modal.
+    // This ensures the GameBoy modal (a brand element) is visible to all users.
 
     setState({
       hasConsented: consentLevel !== null,
       consentLevel,
       granularConsent,
+      gpcDetected: gpcEnabled,
     });
   }, []);
 
@@ -155,6 +150,11 @@ export function useCookieConsent() {
     // If user declined marketing consent, ensure Klaviyo is disabled
     if (!granularConsent.marketing) {
       disableKlaviyo();
+    }
+
+    // If user declined performance consent, ensure PostHog is disabled
+    if (!granularConsent.performance) {
+      disablePostHog();
     }
 
     setState({
@@ -177,6 +177,11 @@ export function useCookieConsent() {
     // If user disabled marketing consent, ensure Klaviyo is disabled and cleaned up
     if (!safeConsent.marketing) {
       disableKlaviyo();
+    }
+
+    // If user disabled performance consent, ensure PostHog is disabled and cleaned up
+    if (!safeConsent.performance) {
+      disablePostHog();
     }
 
     setState({
@@ -202,6 +207,7 @@ export function useCookieConsent() {
     hasConsented: state.hasConsented,
     consentLevel: state.consentLevel,
     granularConsent: state.granularConsent,
+    gpcDetected: state.gpcDetected,
     setConsent,
     setGranularConsent,
     clearConsent,

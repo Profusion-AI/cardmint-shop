@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { TopBanner } from "./TopBanner";
 import { useCookieConsent } from "@/hooks/useCookieConsent";
 import { loadKlaviyo, disableKlaviyo } from "@/lib/klaviyoLoader";
+import { loadPostHog, disablePostHog } from "@/lib/posthogLoader";
 
 /**
  * Layout - Wraps all pages with persistent navigation
@@ -30,6 +31,18 @@ export function Layout({ children }: LayoutProps) {
     }
     // If !hasConsented, do nothing - wait for user to make a choice
   }, [hasConsented, granularConsent?.marketing]);
+
+  // Consent-aware PostHog loading: only load when performance consent is granted
+  useEffect(() => {
+    if (granularConsent?.performance) {
+      // User has granted performance consent - load PostHog analytics
+      loadPostHog();
+    } else if (hasConsented && !granularConsent?.performance) {
+      // User has consented but declined performance - ensure PostHog is disabled
+      disablePostHog();
+    }
+    // If !hasConsented, do nothing - wait for user to make a choice
+  }, [hasConsented, granularConsent?.performance]);
 
   return (
     <div className="min-h-screen bg-oxford-blue">

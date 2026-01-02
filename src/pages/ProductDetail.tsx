@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { trackEvent } from "@/lib/posthogLoader";
 import {
   Eye,
   RotateCcw,
@@ -124,6 +125,21 @@ export default function ProductDetail() {
 
   // Parse slug for debugging/analytics
   const slugParts = slug ? parseProductSlug(slug) : null;
+
+  // Track product view when product loads successfully
+  useEffect(() => {
+    if (product) {
+      trackEvent('product_viewed', {
+        product_id: product.product_uid,
+        product_sku: product.product_sku,
+        product_name: product.card_name,
+        set_name: product.set_name,
+        condition: product.condition_bucket,
+        price: product.launch_price ?? product.market_price ?? 0,
+        currency: 'USD',
+      });
+    }
+  }, [product]);
 
   // Loading state
   if (isLoading) {

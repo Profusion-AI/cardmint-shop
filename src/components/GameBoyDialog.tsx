@@ -17,6 +17,7 @@ interface GameBoyDialogProps {
   onClose: () => void;
   onCookieChoice?: (choice: CookieChoice) => void;
   onOpenPreferences?: () => void;
+  gpcPreset?: boolean; // True if browser's Global Privacy Control signal was detected
 }
 
 type Phase = 'welcome' | 'cookies' | 'buttons' | 'accepted' | 'farewell';
@@ -52,15 +53,20 @@ const gbColors = {
   textDark: '#1a3a1a',
 };
 
-export const GameBoyDialog = ({ visible, onClose, onCookieChoice, onOpenPreferences }: GameBoyDialogProps) => {
+export const GameBoyDialog = ({ visible, onClose, onCookieChoice, onOpenPreferences, gpcPreset }: GameBoyDialogProps) => {
   const [phase, setPhase] = useState<Phase>('welcome');
   const [displayText, setDisplayText] = useState('');
   const [cookieText, setCookieText] = useState('');
   const [farewellText, setFarewellText] = useState('');
   const [cookieChoice, setCookieChoice] = useState<CookieChoice | null>(null);
 
-  const welcomeMessage = "Welcome, Trainer! Ready to explore the CardMint vault?";
-  const cookieMessage = "By continuing, we may gather necessary cookies to improve your experience.";
+  // Customize messages when browser's GPC (Global Privacy Control) is detected
+  const welcomeMessage = gpcPreset
+    ? "Welcome, Trainer! We noticed your privacy shield is up..."
+    : "Welcome, Trainer! Ready to explore the CardMint vault?";
+  const cookieMessage = gpcPreset
+    ? "Your browser sent a Do Not Track signal. We respect that! You can still customize below."
+    : "By continuing, we may gather necessary cookies to improve your experience.";
   const farewellMessage = "No worries! You can browse freely. Some features may be limited.";
 
   // Reset state when visibility changes
@@ -403,27 +409,28 @@ export const GameBoyDialog = ({ visible, onClose, onCookieChoice, onOpenPreferen
                   Manage Preferences
                 </button>
 
-                {/* Opt Out */}
+                {/* Opt Out - highlighted when GPC is detected */}
                 <button
                   onClick={() => handleCookieChoice('none')}
                   disabled={cookieChoice !== null}
                   className="gb-cookie-btn"
                   style={{
-                    padding: '6px 12px',
+                    padding: gpcPreset ? '8px 12px' : '6px 12px',
                     borderRadius: '4px',
-                    fontSize: '8px',
-                    fontWeight: 500,
+                    fontSize: gpcPreset ? '9px' : '8px',
+                    fontWeight: gpcPreset ? 600 : 500,
                     fontFamily: '"Press Start 2P", "Courier New", monospace',
                     cursor: cookieChoice ? 'default' : 'pointer',
-                    border: 'none',
-                    background: 'transparent',
-                    color: cookieChoice ? 'rgba(48, 98, 48, 0.3)' : 'rgba(48, 98, 48, 0.7)',
-                    textDecoration: 'underline',
+                    border: gpcPreset ? `2px solid ${gbColors.screenDark}` : 'none',
+                    background: gpcPreset ? 'rgba(155, 188, 15, 0.5)' : 'transparent',
+                    color: cookieChoice ? 'rgba(48, 98, 48, 0.3)' : (gpcPreset ? gbColors.screenDark : 'rgba(48, 98, 48, 0.7)'),
+                    textDecoration: gpcPreset ? 'none' : 'underline',
                     textUnderlineOffset: '2px',
+                    boxShadow: gpcPreset ? '2px 2px 0 rgba(48, 98, 48, 0.3)' : 'none',
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  Opt Out
+                  {gpcPreset ? '🛡️ Opt Out (Recommended)' : 'Opt Out'}
                 </button>
               </div>
             )}

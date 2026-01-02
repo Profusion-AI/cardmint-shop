@@ -16,7 +16,7 @@ const Index = () => {
   const [loading, setLoading] = useState(true);
   const [showCookieDialog, setShowCookieDialog] = useState(false);
   const [showPreferenceCenter, setShowPreferenceCenter] = useState(false);
-  const { hasConsented, setConsent, granularConsent, setGranularConsent } = useCookieConsent();
+  const { hasConsented, setConsent, granularConsent, setGranularConsent, gpcDetected } = useCookieConsent();
 
   useEffect(() => {
     let aborted = false;
@@ -80,6 +80,7 @@ const Index = () => {
       {/* Cookie consent dialog - appears after 500ms on first visit */}
       <GameBoyDialog
         visible={showCookieDialog}
+        gpcPreset={gpcDetected}
         onClose={() => setShowCookieDialog(false)}
         onCookieChoice={(choice) => {
           setConsent(choice);

@@ -1,8 +1,9 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { CheckCircle2, Package, ArrowRight, Sparkles, Loader2, AlertCircle } from "lucide-react";
 import { useCart } from "@/hooks/useCart";
 import { Button } from "@/components/ui/button";
+import { trackEvent } from "@/lib/posthogLoader";
 
 interface OrderData {
   orderNumber: string;
@@ -115,6 +116,20 @@ export default function CheckoutSuccess() {
       clearLocalCart();
     }
   }, [sessionId, clearLocalCart]);
+
+  // Track checkout completed when order is loaded (only once)
+  const hasTrackedRef = useRef(false);
+  useEffect(() => {
+    if (order && !hasTrackedRef.current) {
+      hasTrackedRef.current = true;
+      trackEvent('checkout_completed', {
+        order_number: order.orderNumber,
+        item_count: order.itemCount,
+        total_value: order.totalCents / 100,
+        currency: 'USD',
+      });
+    }
+  }, [order]);
 
   // Format order number for display
   const displayOrderNumber = order?.orderNumber || null;

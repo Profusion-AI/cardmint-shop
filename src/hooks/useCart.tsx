@@ -7,6 +7,7 @@
  */
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { trackEvent } from "@/lib/posthogLoader";
 
 // Cart item matches the product data structure
 export interface CartItem {
@@ -241,6 +242,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
     });
     recordCartActivity();
     setCheckoutError(null);
+
+    // Track add to cart event
+    trackEvent('add_to_cart', {
+      product_id: item.product_uid,
+      product_name: item.name,
+      set_name: item.set,
+      condition: item.condition,
+      price: item.price,
+      currency: 'USD',
+    });
   }, [items, cartSessionId, recordCartActivity]);
 
   /**
@@ -450,6 +461,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setIsCheckingOut(true);
     setCheckoutError(null);
     recordCartActivity();
+
+    // Track checkout started event
+    trackEvent('checkout_started', {
+      item_count: validatedItems.length,
+      total_value: validatedItems.reduce((sum, item) => sum + item.price, 0),
+      currency: 'USD',
+      product_ids: validatedItems.map((item) => item.product_uid),
+    });
 
     try {
       // Cancel any stale checkout sessions from previous abandoned checkouts
