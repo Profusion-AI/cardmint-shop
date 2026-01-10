@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ShoppingBag, Sparkles, Trash2, Loader2, AlertCircle } from "lucide-react";
+import { ShoppingBag, Sparkles, Trash2, Loader2, AlertCircle, Tag, X } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/sheet";
 import { useCart } from "@/hooks/useCart";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 /**
  * TopBanner - Persistent site navigation header
@@ -23,7 +24,25 @@ interface TopBannerProps {
 
 export function TopBanner({ isLoggedIn: _isLoggedIn = false }: TopBannerProps) {
   const [cartOpen, setCartOpen] = useState(false);
-  const { items, itemCount, subtotal, removeItem, isCheckingOut, checkoutError, checkout } = useCart();
+  const [couponInput, setCouponInput] = useState("");
+  const {
+    items,
+    itemCount,
+    subtotal,
+    removeItem,
+    isCheckingOut,
+    checkoutError,
+    checkout,
+    appliedCoupon,
+    couponError,
+    isApplyingCoupon,
+    applyCoupon,
+    removeCoupon,
+  } = useCart();
+
+  const subtotalCents = Math.round(subtotal * 100);
+  const promoDiscountCents = appliedCoupon?.discount_cents ?? 0;
+  const estimatedTotalCents = Math.max(0, subtotalCents - promoDiscountCents);
 
   // Show notification dot when cart has items
   const showNotificationDot = itemCount > 0;
@@ -189,16 +208,86 @@ export function TopBanner({ isLoggedIn: _isLoggedIn = false }: TopBannerProps) {
           {/* Cart Footer - Only show when items exist */}
           {itemCount > 0 && (
             <div className="border-t border-white/10 pt-4 space-y-3">
+              {/* Coupon Section */}
+              {!appliedCoupon ? (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <Input
+                      type="text"
+                      placeholder="Promo code"
+                      value={couponInput}
+                      onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                      className="flex-1 h-9 bg-white/5 border-white/20 text-paper placeholder:text-paper/40 focus:border-mint"
+                      disabled={isApplyingCoupon}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 border-white/20 text-paper hover:bg-white/10 hover:text-mint"
+                      onClick={() => {
+                        applyCoupon(couponInput);
+                        setCouponInput("");
+                      }}
+                      disabled={isApplyingCoupon || !couponInput.trim()}
+                    >
+                      {isApplyingCoupon ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        "Apply"
+                      )}
+                    </Button>
+                  </div>
+                  {couponError && (
+                    <p className="text-xs text-red-400">{couponError}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-between rounded-lg border border-mint/30 bg-mint/10 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <Tag className="h-4 w-4 text-mint" />
+                    <span className="text-sm font-medium text-mint">{appliedCoupon.code}</span>
+                    <span className="text-xs text-paper/60">({appliedCoupon.discount_pct}% off)</span>
+                  </div>
+                  <button
+                    onClick={removeCoupon}
+                    className="p-1 text-paper/60 hover:text-paper transition-colors"
+                    aria-label="Remove coupon"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+
               {checkoutError && (
                 <div className="flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-100">
                   <AlertCircle className="h-4 w-4 mt-0.5" />
                   <span>{checkoutError}</span>
                 </div>
               )}
-              <div className="flex justify-between text-sm">
-                <span className="text-paper/70">Subtotal</span>
-                <span className="font-semibold text-paper">${subtotal.toFixed(2)}</span>
+
+              {/* Price Breakdown */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-sm">
+                  <span className="text-paper/70">Subtotal</span>
+                  <span className="text-paper">${subtotal.toFixed(2)}</span>
+                </div>
+                {appliedCoupon && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-mint">Promo Discount (est.)</span>
+                    <span className="text-mint">-${(promoDiscountCents / 100).toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm pt-1 border-t border-white/10">
+                  <span className="text-paper/70">Estimated Total</span>
+                  <span className="font-semibold text-paper">
+                    ${(estimatedTotalCents / 100).toFixed(2)}
+                  </span>
+                </div>
+                <p className="text-xs text-paper/50">
+                  Shipping and bundle savings calculated at checkout
+                </p>
               </div>
+
               <Button
                 className="w-full rounded-lg bg-mint py-3 font-sans text-sm font-semibold text-midnight transition-colors hover:bg-aqua"
                 onClick={checkout}

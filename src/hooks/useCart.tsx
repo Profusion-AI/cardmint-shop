@@ -24,6 +24,13 @@ export interface CartItem {
   checkout_session_id?: string;
 }
 
+/** Applied coupon discount info */
+export interface AppliedCoupon {
+  code: string;
+  discount_pct: number;
+  discount_cents: number;
+}
+
 interface CartContextValue {
   items: CartItem[];
   itemCount: number;
@@ -38,6 +45,16 @@ interface CartContextValue {
   isCheckingOut: boolean;
   checkoutError: string | null;
   checkout: () => Promise<void>;
+  /** Applied coupon (if any) */
+  appliedCoupon: AppliedCoupon | null;
+  /** Error message from coupon validation */
+  couponError: string | null;
+  /** Whether a coupon is being validated */
+  isApplyingCoupon: boolean;
+  /** Apply a coupon code */
+  applyCoupon: (code: string) => Promise<void>;
+  /** Remove the applied coupon */
+  removeCoupon: () => void;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -160,6 +177,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [lastActivityAt, setLastActivityAt] = useState<number | null>(null);
+
+  // Coupon state
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
 
   // Persistent cart session ID - generated once and stored in localStorage
   const [cartSessionId] = useState<string>(() => loadOrCreateCartSessionId());
@@ -441,6 +463,91 @@ export function CartProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  /**
+   * Apply a coupon code - validates against backend and stores result.
+   * Coupon discount is calculated against current subtotal.
+   */
+  const applyCoupon = useCallback(async (code: string) => {
+    if (!code.trim()) return;
+    if (items.length === 0) {
+      setCouponError("Add items to cart first");
+      return;
+    }
+
+    setIsApplyingCoupon(true);
+    setCouponError(null);
+
+    try {
+      const subtotalCents = Math.round(subtotal * 100);
+      const response = await fetch("/api/checkout/coupon/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          coupon_code: code,
+          subtotal_cents: subtotalCents,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        const errorMessage = data.message || "Failed to validate coupon";
+        setCouponError(errorMessage);
+        setAppliedCoupon(null);
+        trackEvent('coupon_failed', {
+          code,
+          reason: data.reason || 'unknown',
+          subtotal_cents: subtotalCents,
+        });
+        return;
+      }
+
+      if (!data.valid) {
+        setCouponError(data.message || "Invalid coupon");
+        setAppliedCoupon(null);
+        trackEvent('coupon_failed', {
+          code,
+          reason: data.reason || 'invalid',
+          subtotal_cents: subtotalCents,
+        });
+        return;
+      }
+
+      // Coupon is valid - store it
+      setAppliedCoupon({
+        code: data.coupon.code,
+        discount_pct: data.coupon.discount_pct,
+        discount_cents: data.coupon.discount_cents,
+      });
+      setCouponError(null);
+
+      trackEvent('coupon_applied', {
+        code: data.coupon.code,
+        discount_pct: data.coupon.discount_pct,
+        discount_cents: data.coupon.discount_cents,
+        subtotal_cents: subtotalCents,
+      });
+    } catch (error) {
+      setCouponError("Failed to validate coupon. Please try again.");
+      setAppliedCoupon(null);
+    } finally {
+      setIsApplyingCoupon(false);
+    }
+  }, [items.length, subtotal]);
+
+  /**
+   * Remove the currently applied coupon.
+   */
+  const removeCoupon = useCallback(() => {
+    if (appliedCoupon) {
+      trackEvent('coupon_removed', {
+        code: appliedCoupon.code,
+      });
+    }
+    setAppliedCoupon(null);
+    setCouponError(null);
+  }, [appliedCoupon]);
+
   const checkout = useCallback(async () => {
     if (items.length === 0) return;
     if (expireCartIfIdle()) return;
@@ -507,6 +614,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({
           product_uids,
           cart_session_id: cartSessionId,
+          coupon_code: appliedCoupon?.code,
           success_url: `${window.location.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${window.location.origin}/checkout/cancel`,
         }),
@@ -537,7 +645,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsCheckingOut(false);
     }
-  }, [items, setItemCheckoutSession, expireCartIfIdle, validateCartReservations, recordCartActivity]);
+  }, [items, setItemCheckoutSession, expireCartIfIdle, validateCartReservations, recordCartActivity, appliedCoupon, cartSessionId]);
 
   return (
     <CartContext.Provider
@@ -554,6 +662,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
         isCheckingOut,
         checkoutError,
         checkout,
+        appliedCoupon,
+        couponError,
+        isApplyingCoupon,
+        applyCoupon,
+        removeCoupon,
       }}
     >
       {children}
