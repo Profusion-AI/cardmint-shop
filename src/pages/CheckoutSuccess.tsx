@@ -11,6 +11,13 @@ interface OrderData {
   subtotalCents: number;
   shippingCents: number;
   totalCents: number;
+  // Analytics fields (P0.4.3)
+  originalSubtotalCents: number | null;
+  discountCents: number;
+  promoCode: string | null;
+  couponSource: string | null;
+  taxCents: number;
+  currency: string;
   status: string;
   createdAt: string;
 }
@@ -118,15 +125,28 @@ export default function CheckoutSuccess() {
   }, [sessionId, clearLocalCart]);
 
   // Track checkout completed when order is loaded (only once)
+  // P0.4.3: Full financial fields for analytics taxonomy
   const hasTrackedRef = useRef(false);
   useEffect(() => {
     if (order && !hasTrackedRef.current) {
       hasTrackedRef.current = true;
       trackEvent('checkout_completed', {
+        // Order identification
         order_number: order.orderNumber,
         item_count: order.itemCount,
+        // Financial fields (all in cents for precision)
+        subtotal_cents: order.subtotalCents,
+        original_subtotal_cents: order.originalSubtotalCents,
+        discount_cents: order.discountCents,
+        shipping_cents: order.shippingCents,
+        tax_cents: order.taxCents,
+        total_cents: order.totalCents,
+        currency: order.currency,
+        // Coupon tracking
+        coupon_code: order.promoCode,
+        coupon_source: order.couponSource,
+        // Legacy field for backwards compatibility
         total_value: order.totalCents / 100,
-        currency: 'USD',
       });
     }
   }, [order]);

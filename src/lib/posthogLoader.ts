@@ -14,8 +14,33 @@ import posthog from 'posthog-js';
 const POSTHOG_KEY = import.meta.env.VITE_PUBLIC_POSTHOG_KEY || '';
 const POSTHOG_HOST = import.meta.env.VITE_PUBLIC_POSTHOG_HOST || 'https://us.posthog.com';
 
+// Query parameters that should never appear in analytics URLs
+// These are secrets or sensitive identifiers that could leak via $current_url
+const SENSITIVE_URL_PARAMS = ['session_id', 'payment_intent', 'payment_intent_client_secret'];
+
 // Track initialization state
 let isInitialized = false;
+
+/**
+ * Remove sensitive query parameters from a URL string.
+ * Used by before_send to prevent token/session leakage in analytics.
+ */
+function sanitizeUrl(urlString: string): string {
+  try {
+    const url = new URL(urlString);
+    let changed = false;
+    for (const param of SENSITIVE_URL_PARAMS) {
+      if (url.searchParams.has(param)) {
+        url.searchParams.delete(param);
+        changed = true;
+      }
+    }
+    return changed ? url.toString() : urlString;
+  } catch {
+    // If URL parsing fails, return original (could be relative URL or malformed)
+    return urlString;
+  }
+}
 
 /**
  * Initialize PostHog with privacy-first configuration.
@@ -48,6 +73,21 @@ export function loadPostHog(): void {
     opt_out_capturing_by_default: false,
     loaded: () => {
       console.debug('[PostHog] Initialized with consent');
+    },
+    // Sanitize sensitive data from event properties before sending
+    // Strips session_id and other secrets from URLs to prevent PII/token leakage
+    before_send: (event) => {
+      if (event.properties) {
+        // Sanitize $current_url (auto-captured on pageviews)
+        if (typeof event.properties.$current_url === 'string') {
+          event.properties.$current_url = sanitizeUrl(event.properties.$current_url);
+        }
+        // Sanitize $referrer if present
+        if (typeof event.properties.$referrer === 'string') {
+          event.properties.$referrer = sanitizeUrl(event.properties.$referrer);
+        }
+      }
+      return event;
     },
   });
 
