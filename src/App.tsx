@@ -23,6 +23,9 @@ const Accessibility = lazy(() => import("./pages/Accessibility"));
 const CheckoutSuccess = lazy(() => import("./pages/CheckoutSuccess"));
 const CheckoutCancel = lazy(() => import("./pages/CheckoutCancel"));
 
+// Order claim page (lazy loaded)
+const ClaimOrder = lazy(() => import("./pages/ClaimOrder"));
+
 const queryClient = new QueryClient();
 
 // Loading fallback for lazy pages
@@ -62,6 +65,9 @@ const App = () => (
                 {/* Checkout flow routes */}
                 <Route path="/checkout/success" element={<CheckoutSuccess />} />
                 <Route path="/checkout/cancel" element={<CheckoutCancel />} />
+
+                {/* Order claim route */}
+                <Route path="/claim" element={<ClaimOrder />} />
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
