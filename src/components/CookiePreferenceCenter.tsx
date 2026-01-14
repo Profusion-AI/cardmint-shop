@@ -19,7 +19,7 @@ const COOKIE_CATEGORIES = [
   {
     id: 'performance' as const,
     name: 'Performance',
-    description: 'Not currently used',
+    description: 'Analytics (PostHog)',
     disabled: false,
   },
   {

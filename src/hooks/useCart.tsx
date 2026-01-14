@@ -265,16 +265,20 @@ export function CartProvider({ children }: { children: ReactNode }) {
     recordCartActivity();
     setCheckoutError(null);
 
-    // Track add to cart event
-    trackEvent('add_to_cart', {
+    // Track cart updated event (analytics taxonomy v1)
+    trackEvent('cart_updated', {
+      cart_id: cartSessionId,
+      item_count: items.length + 1, // Count after adding this item
+      total_value: Math.round((subtotal + item.price) * 100), // In cents
+      currency: 'USD',
+      // Item-level details for analysis
       product_id: item.product_uid,
       product_name: item.name,
       set_name: item.set,
       condition: item.condition,
-      price: item.price,
-      currency: 'USD',
+      price_cents: Math.round(item.price * 100),
     });
-  }, [items, cartSessionId, recordCartActivity]);
+  }, [items, cartSessionId, recordCartActivity, subtotal]);
 
   /**
    * Remove item from cart - releases backend reservation and removes from local state.
