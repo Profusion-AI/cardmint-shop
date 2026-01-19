@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 /**
  * GameBoyDialog - A nostalgic welcome + cookie consent component
@@ -51,6 +51,83 @@ const gbColors = {
   // Text colors
   textEmbossed: '#7A7A72',
   textDark: '#1a3a1a',
+};
+
+// Animated trainer sprite that follows mouse cursor
+const TrainerSprite = ({ size = 32 }: { size?: number }) => {
+  const [direction, setDirection] = useState<'down' | 'up' | 'left' | 'right'>('down');
+  const [frame, setFrame] = useState(0);
+  const spriteRef = useRef<HTMLDivElement>(null);
+
+  // Frame animation: toggle every 500ms (walking effect)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setFrame(f => (f === 0 ? 1 : 0));
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Mouse tracking: only when a real pointer is available (hybrid device fix)
+  useEffect(() => {
+    const canTrackMouse = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    if (!canTrackMouse) return;
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse") return;
+      if (!spriteRef.current) return;
+      const rect = spriteRef.current.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+
+      const dx = e.clientX - centerX;
+      const dy = e.clientY - centerY;
+
+      // Determine dominant axis
+      if (Math.abs(dx) > Math.abs(dy)) {
+        setDirection(dx > 0 ? 'right' : 'left');
+      } else {
+        setDirection(dy > 0 ? 'down' : 'up');
+      }
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    return () => window.removeEventListener('pointermove', handlePointerMove);
+  }, []);
+
+  // Sprite positions: col 0-1 = down, 2-3 = up (row 0); 0-1 = left, 2-3 = right (row 1)
+  const frameMap = {
+    down:  { row: 0, cols: [0, 1] },
+    up:    { row: 0, cols: [2, 3] },
+    left:  { row: 1, cols: [0, 1] },
+    right: { row: 1, cols: [2, 3] },
+  };
+
+  // Actual sprite frame dimensions (2816×1504 / 4×2 grid)
+  const FRAME_WIDTH = 704;
+  const FRAME_HEIGHT = 752;
+
+  const { row, cols } = frameMap[direction];
+  const col = cols[frame];
+
+  // Scale factor to render at desired size
+  const scaleX = size / FRAME_WIDTH;
+  const scaleY = size / FRAME_HEIGHT;
+
+  return (
+    <div
+      ref={spriteRef}
+      style={{
+        width: size,
+        height: size,
+        backgroundImage: 'url(/cardmint-sprite.png)',
+        backgroundSize: `${FRAME_WIDTH * 4 * scaleX}px ${FRAME_HEIGHT * 2 * scaleY}px`,
+        backgroundPosition: `-${col * FRAME_WIDTH * scaleX}px -${row * FRAME_HEIGHT * scaleY}px`,
+        imageRendering: 'pixelated',
+        flexShrink: 0,
+        mixBlendMode: 'multiply',
+      }}
+    />
+  );
 };
 
 export const GameBoyDialog = ({ visible, onClose, onCookieChoice, onOpenPreferences, gpcPreset }: GameBoyDialogProps) => {
@@ -280,13 +357,7 @@ export const GameBoyDialog = ({ visible, onClose, onCookieChoice, onOpenPreferen
 
             {/* Welcome message */}
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', position: 'relative' }}>
-              <span style={{
-                fontSize: '20px',
-                flexShrink: 0,
-                filter: 'drop-shadow(1px 1px 0 rgba(48,98,48,0.3))',
-              }}>
-                🎴
-              </span>
+              <TrainerSprite size={32} />
               <p style={{
                 color: gbColors.screenDark,
                 fontSize: '11px',
