@@ -1,12 +1,16 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Mail } from "lucide-react";
+import { Mail, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
+import { useEmailCapture } from "@/hooks/useEmailCapture";
 
 export const EmailCapture = () => {
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  const { isSubscribed, markSubscribed } = useEmailCapture();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,6 +25,8 @@ export const EmailCapture = () => {
       });
 
       if (response.ok) {
+        markSubscribed();
+        setSubmitted(true);
         toast.success("Welcome! Check your email for your 10% code.");
         setEmail("");
       } else {
@@ -33,6 +39,25 @@ export const EmailCapture = () => {
       setIsSubmitting(false);
     }
   };
+
+  // Show thank you message if already subscribed
+  if (isSubscribed || submitted) {
+    return (
+      <section className="py-20 px-6 bg-gradient-to-b from-indigo-ink to-oxford-blue">
+        <div className="max-w-3xl mx-auto text-center">
+          <div className="bg-gradient-to-br from-collectors-pink/10 to-cardmint-red/5 rounded-2xl p-12 border border-collectors-pink/20 backdrop-blur-sm">
+            <CheckCircle className="w-12 h-12 text-mint-spark mx-auto mb-6" />
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              You're on the list!
+            </h2>
+            <p className="text-muted-foreground text-lg">
+              Check your email for your 10% welcome code and rare drop alerts.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="py-20 px-6 bg-gradient-to-b from-indigo-ink to-oxford-blue">

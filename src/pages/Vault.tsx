@@ -37,6 +37,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { Footer } from "@/components/Footer";
+import { EmailCaptureInline } from "@/components/EmailCaptureInline";
 
 // Condition display mapping
 const CONDITION_LABELS: Record<string, { name: string; abbr: string }> = {
@@ -1169,6 +1170,11 @@ export default function Vault() {
             Check back for new additions — the Vault is updated (nearly) daily.
           </p>
         </div>
+      </section>
+
+      {/* Email capture inline - before footer */}
+      <section className="border-t border-white/5 bg-white/[0.02]">
+        <EmailCaptureInline variant="vault" />
       </section>
 
       <Footer />

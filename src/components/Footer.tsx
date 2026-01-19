@@ -1,5 +1,6 @@
 import { Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
+import { EmailCaptureInline } from "./EmailCaptureInline";
 
 export const Footer = () => {
   const currentYear = new Date().getFullYear();
@@ -87,6 +88,11 @@ export const Footer = () => {
               </li>
             </ul>
           </div>
+        </div>
+
+        {/* Newsletter Signup */}
+        <div className="border-t border-indigo-ink">
+          <EmailCaptureInline variant="footer" />
         </div>
 
         {/* Bottom Bar */}
