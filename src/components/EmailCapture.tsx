@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Mail, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useEmailCapture } from "@/hooks/useEmailCapture";
+import { identifyKlaviyoUser } from "@/lib/klaviyoLoader";
 
 export const EmailCapture = () => {
   const [email, setEmail] = useState("");
@@ -26,6 +27,7 @@ export const EmailCapture = () => {
 
       if (response.ok) {
         markSubscribed();
+        identifyKlaviyoUser(email, { CmSubscribeSource: 'vault_landing' });
         setSubmitted(true);
         toast.success("Welcome! Check your email for your 10% code.");
         setEmail("");

@@ -6,8 +6,9 @@
  * Items are reserved on the backend when added to cart (15-min TTL).
  */
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { trackEvent } from "@/lib/posthogLoader";
+import { trackKlaviyoEvent } from "@/lib/klaviyoLoader";
 
 // Cart item matches the product data structure
 export interface CartItem {
@@ -186,6 +187,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // Persistent cart session ID - generated once and stored in localStorage
   const [cartSessionId] = useState<string>(() => loadOrCreateCartSessionId());
 
+  // One-shot guard to prevent duplicate Abandoned Cart events
+  const abandonedCartFiredRef = useRef<boolean>(false);
+
   // Load cart from localStorage on mount
   useEffect(() => {
     const storedItems = loadCartFromStorage();
@@ -277,6 +281,24 @@ export function CartProvider({ children }: { children: ReactNode }) {
       set_name: item.set,
       condition: item.condition,
       price_cents: Math.round(item.price * 100),
+    });
+
+    // Klaviyo 'Added to Cart' event for cart abandonment flows
+    // Reset abandoned cart guard when new items added
+    abandonedCartFiredRef.current = false;
+    trackKlaviyoEvent('Added to Cart', {
+      $value: item.price,
+      $event_id: `atc_${item.product_uid}_${Date.now()}`,
+      ProductName: item.name,
+      ProductID: item.product_uid,
+      SetName: item.set,
+      CollectorNo: item.number,
+      Condition: item.condition,
+      Price: item.price,
+      ImageURL: item.frontImage,
+      URL: `${window.location.origin}/products/${item.slug}`,
+      CartTotal: subtotal + item.price,
+      ItemCount: items.length + 1,
     });
   }, [items, cartSessionId, recordCartActivity, subtotal]);
 
@@ -417,10 +439,34 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const expireCartIfIdle = useCallback((): boolean => {
     if (!lastActivityAt) return false;
     if (Date.now() - lastActivityAt <= CART_TIMEOUT_MS) return false;
+
+    // Track cart abandonment before clearing (one-shot guard prevents duplicates)
+    if (items.length > 0 && !abandonedCartFiredRef.current) {
+      abandonedCartFiredRef.current = true;
+      const abandonedTotal = items.reduce((sum, item) => sum + item.price, 0);
+      trackKlaviyoEvent('Abandoned Cart', {
+        $value: abandonedTotal,
+        $event_id: `abandon_${cartSessionId}_${Date.now()}`,
+        ItemCount: items.length,
+        CartTotal: abandonedTotal,
+        Currency: 'USD',
+        AbandonReason: 'timeout',
+        Items: items.map((item) => ({
+          ProductName: item.name,
+          ProductID: item.product_uid,
+          SetName: item.set,
+          Condition: item.condition,
+          Price: item.price,
+          ImageURL: item.frontImage,
+          URL: `${window.location.origin}/products/${item.slug}`,
+        })),
+      });
+    }
+
     void clearCart();
     setCheckoutError("Your cart expired after 15 minutes of inactivity.");
     return true;
-  }, [clearCart, lastActivityAt]);
+  }, [clearCart, lastActivityAt, items, cartSessionId]);
 
   useEffect(() => {
     if (items.length === 0) return;
@@ -574,11 +620,30 @@ export function CartProvider({ children }: { children: ReactNode }) {
     recordCartActivity();
 
     // Track checkout started event
+    const checkoutTotal = validatedItems.reduce((sum, item) => sum + item.price, 0);
     trackEvent('checkout_started', {
       item_count: validatedItems.length,
-      total_value: validatedItems.reduce((sum, item) => sum + item.price, 0),
+      total_value: checkoutTotal,
       currency: 'USD',
       product_ids: validatedItems.map((item) => item.product_uid),
+    });
+
+    // Klaviyo 'Started Checkout' event for abandoned checkout flows
+    trackKlaviyoEvent('Started Checkout', {
+      $value: checkoutTotal,
+      $event_id: `checkout_${cartSessionId}_${Date.now()}`,
+      ItemCount: validatedItems.length,
+      CheckoutTotal: checkoutTotal,
+      Currency: 'USD',
+      Items: validatedItems.map((item) => ({
+        ProductName: item.name,
+        ProductID: item.product_uid,
+        SetName: item.set,
+        Condition: item.condition,
+        Price: item.price,
+        ImageURL: item.frontImage,
+        URL: `${window.location.origin}/products/${item.slug}`,
+      })),
     });
 
     try {

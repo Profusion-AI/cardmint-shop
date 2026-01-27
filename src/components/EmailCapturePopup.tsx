@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, FormEvent } from 'react';
 import { toast } from 'sonner';
 import { useEmailCapture } from '@/hooks/useEmailCapture';
+import { identifyKlaviyoUser } from '@/lib/klaviyoLoader';
 
 /**
  * EmailCapturePopup - GameBoy-styled email capture popup
@@ -191,6 +192,7 @@ export const EmailCapturePopup = ({ visible, onClose }: EmailCapturePopupProps) 
 
       if (response.ok) {
         markSubscribed();
+        identifyKlaviyoUser(email, { CmSubscribeSource: 'popup' });
         setPhase('success');
         toast.success('Check your email for your 10% code!');
         // Auto-close after showing success

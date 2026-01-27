@@ -76,3 +76,57 @@ export function disableKlaviyo(): void {
 export function isKlaviyoDisabled(): boolean {
   return document.cookie.includes('__kla_off=true');
 }
+
+// TypeScript declaration for Klaviyo globals
+declare global {
+  interface Window {
+    klaviyo?: {
+      push: (args: unknown[]) => void;
+    };
+    /** Klaviyo onsite queue - events pushed here are processed when Klaviyo.js loads */
+    _klOnsite?: unknown[][];
+  }
+}
+
+/**
+ * Track a Klaviyo event (consent-aware).
+ * Uses the _klOnsite queue pattern so events are buffered if Klaviyo hasn't loaded yet.
+ * Events are silently dropped if Klaviyo is disabled.
+ *
+ * @param eventName - Klaviyo metric name (e.g., 'Viewed Product')
+ * @param properties - Event properties object
+ */
+export function trackKlaviyoEvent(eventName: string, properties?: Record<string, unknown>): void {
+  if (isKlaviyoDisabled()) return;
+  if (typeof window === 'undefined') return;
+
+  try {
+    // Use queue pattern - works even before Klaviyo.js fully loads
+    window._klOnsite = window._klOnsite || [];
+    window._klOnsite.push(['track', eventName, properties ?? {}]);
+  } catch {
+    // Silently ignore tracking errors
+  }
+}
+
+/**
+ * Identify a user in Klaviyo (consent-aware).
+ * Uses the _klOnsite queue pattern so identification is buffered if Klaviyo hasn't loaded yet.
+ * Call this when user's email becomes known (e.g., on email capture).
+ *
+ * @param email - User's email address
+ * @param properties - Additional profile properties
+ */
+export function identifyKlaviyoUser(email: string, properties?: Record<string, unknown>): void {
+  if (isKlaviyoDisabled()) return;
+  if (typeof window === 'undefined') return;
+  if (!email || !email.includes('@')) return;
+
+  try {
+    // Use queue pattern - works even before Klaviyo.js fully loads
+    window._klOnsite = window._klOnsite || [];
+    window._klOnsite.push(['identify', { email, ...properties }]);
+  } catch {
+    // Silently ignore identification errors
+  }
+}

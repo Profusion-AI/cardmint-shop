@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { trackEvent } from "@/lib/posthogLoader";
+import { trackKlaviyoEvent } from "@/lib/klaviyoLoader";
 import {
   Eye,
   RotateCcw,
@@ -129,14 +130,30 @@ export default function ProductDetail() {
   // Track product view when product loads successfully
   useEffect(() => {
     if (product) {
+      const price = product.launch_price ?? product.market_price ?? 0;
+
+      // PostHog analytics
       trackEvent('product_viewed', {
         product_id: product.product_uid,
         product_sku: product.product_sku,
         product_name: product.card_name,
         set_name: product.set_name,
         condition: product.condition_bucket,
-        price: product.launch_price ?? product.market_price ?? 0,
+        price,
         currency: 'USD',
+      });
+
+      // Klaviyo 'Viewed Product' event for email segmentation
+      trackKlaviyoEvent('Viewed Product', {
+        ProductName: product.card_name,
+        ProductID: product.product_uid,
+        SKU: product.product_sku,
+        SetName: product.set_name,
+        CollectorNo: product.collector_no ?? '',
+        Condition: product.condition_bucket,
+        Price: price,
+        ImageURL: product.cdn_image_url ?? '',
+        URL: window.location.href,
       });
     }
   }, [product]);

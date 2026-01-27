@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Mail, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useEmailCapture } from '@/hooks/useEmailCapture';
+import { identifyKlaviyoUser } from '@/lib/klaviyoLoader';
 
 /**
  * EmailCaptureInline - Compact horizontal email capture form
@@ -64,6 +65,7 @@ export const EmailCaptureInline = ({ variant = 'vault' }: EmailCaptureInlineProp
 
       if (response.ok) {
         markSubscribed();
+        identifyKlaviyoUser(email, { CmSubscribeSource: config.source });
         setSubmitted(true);
         setEmail('');
         toast.success('You\'re on the list! Check your email for your 10% code.');
